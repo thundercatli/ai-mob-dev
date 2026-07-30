@@ -4,14 +4,14 @@
     <item
         android:id="@+id/actionKeyboard"
         android:icon="@drawable/ic_keyboard"
-        android:title="显示键盘"
+        android:title="@string/terminal_menu_keyboard"
         app:showAsAction="ifRoom" />
     <item
         android:id="@+id/actionReconnect"
-        android:title="重新连接"
+        android:title="@string/terminal_menu_reconnect"
         app:showAsAction="never" />
     <item
         android:id="@+id/actionDisconnect"
-        android:title="断开并返回"
+        android:title="@string/terminal_menu_disconnect"
         app:showAsAction="never" />
 </menu>

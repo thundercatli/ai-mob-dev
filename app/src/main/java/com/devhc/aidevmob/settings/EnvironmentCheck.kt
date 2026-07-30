@@ -8,6 +8,7 @@ import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.PowerManager
 import androidx.core.content.ContextCompat
+import com.devhc.aidevmob.R
 import com.devhc.aidevmob.frp.FrpcConfigStore
 import com.devhc.aidevmob.ssh.ConnectionStore
 import com.devhc.aidevmob.ssh.CredentialStore
@@ -47,7 +48,7 @@ object EnvironmentCheck {
     fun run(context: Context): List<Result> = listOf(
         frpcBinary(context),
         frpcRuns(context),
-        cryptoProvider(),
+        cryptoProvider(context),
         network(context),
         notifications(context),
         battery(context),
@@ -60,18 +61,19 @@ object EnvironmentCheck {
      */
     private fun frpcBinary(context: Context): Result {
         val binary = File(context.applicationInfo.nativeLibraryDir, "libfrpc.so")
+        val title = context.getString(R.string.env_frpc_binary)
         return when {
             !binary.exists() -> Result(
-                "frpc 二进制", Status.FAIL,
-                "没找到 $binary。这个包可能是在没有编译 frpc 的情况下构建的（见 scripts/build_frpc.sh），隧道无法使用。"
+                title, Status.FAIL,
+                context.getString(R.string.env_frpc_binary_missing, binary.toString())
             )
             !binary.canExecute() -> Result(
-                "frpc 二进制", Status.FAIL,
-                "$binary 存在但不可执行，隧道启动会直接失败。"
+                title, Status.FAIL,
+                context.getString(R.string.env_frpc_binary_not_executable, binary.toString())
             )
             else -> Result(
-                "frpc 二进制", Status.OK,
-                "可执行，${binary.length() / 1024 / 1024} MB"
+                title, Status.OK,
+                context.getString(R.string.env_frpc_binary_ok, binary.length() / 1024 / 1024)
             )
         }
     }
@@ -79,8 +81,9 @@ object EnvironmentCheck {
     /** Actually runs it: the only way to know the binary matches this device's ABI and links. */
     private fun frpcRuns(context: Context): Result {
         val binary = File(context.applicationInfo.nativeLibraryDir, "libfrpc.so")
+        val title = context.getString(R.string.env_frpc_runs)
         if (!binary.canExecute()) {
-            return Result("frpc 可运行", Status.FAIL, "跳过：二进制不可执行")
+            return Result(title, Status.FAIL, context.getString(R.string.env_frpc_runs_skipped))
         }
         return runCatching {
             val process = ProcessBuilder(binary.absolutePath, "-v")
@@ -89,17 +92,23 @@ object EnvironmentCheck {
             val output = process.inputStream.bufferedReader().use { it.readText() }.trim()
             if (!process.waitFor(5, TimeUnit.SECONDS)) {
                 process.destroy()
-                return Result("frpc 可运行", Status.WARN, "执行 frpc -v 超时（5 秒），但二进制本身在")
+                return Result(title, Status.WARN, context.getString(R.string.env_frpc_runs_timeout))
             }
             if (output.isEmpty()) {
-                Result("frpc 可运行", Status.WARN, "能启动，但没有输出版本号（退出码 ${process.exitValue()}）")
+                Result(
+                    title, Status.WARN,
+                    context.getString(R.string.env_frpc_runs_no_output, process.exitValue())
+                )
             } else {
-                Result("frpc 可运行", Status.OK, "frpc $output")
+                Result(title, Status.OK, context.getString(R.string.env_frpc_runs_ok, output))
             }
         }.getOrElse { error ->
             Result(
-                "frpc 可运行", Status.FAIL,
-                "无法执行：${error.message ?: error::class.java.simpleName}"
+                title, Status.FAIL,
+                context.getString(
+                    R.string.env_frpc_runs_failed,
+                    error.message ?: error::class.java.simpleName
+                )
             )
         }
     }
@@ -108,20 +117,20 @@ object EnvironmentCheck {
      * The app replaces Android's cut-down "BC" provider with the full BouncyCastle at startup; sshj's
      * key exchange depends on it, so a failure here means SSH breaks in ways that look like host issues.
      */
-    private fun cryptoProvider(): Result {
+    private fun cryptoProvider(context: Context): Result {
         val provider = Security.getProvider("BC")
+        val title = context.getString(R.string.env_crypto)
         return when {
             provider == null -> Result(
-                "加密提供者", Status.FAIL,
-                "没有注册 BC 提供者，SSH 密钥交换可能失败。"
+                title, Status.FAIL, context.getString(R.string.env_crypto_missing)
             )
             provider.javaClass.name.startsWith("org.bouncycastle") -> Result(
-                "加密提供者", Status.OK,
-                "BouncyCastle ${provider.version}（已替换掉系统精简版）"
+                title, Status.OK,
+                context.getString(R.string.env_crypto_ok, provider.version.toString())
             )
             else -> Result(
-                "加密提供者", Status.WARN,
-                "BC provider 是 ${provider.javaClass.name}，不是完整版 BouncyCastle，某些密钥类型可能不被支持。"
+                title, Status.WARN,
+                context.getString(R.string.env_crypto_wrong, provider.javaClass.name)
             )
         }
     }
@@ -129,38 +138,45 @@ object EnvironmentCheck {
     private fun network(context: Context): Result {
         val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val capabilities = manager.activeNetwork?.let { manager.getNetworkCapabilities(it) }
+        val title = context.getString(R.string.env_network)
         return when {
-            capabilities == null -> Result("网络", Status.FAIL, "当前没有可用网络，隧道和 SSH 都连不上。")
-            !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) -> Result(
-                "网络", Status.WARN, "有网络但系统未标记为可上网。"
-            )
+            capabilities == null ->
+                Result(title, Status.FAIL, context.getString(R.string.env_network_none))
+            !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ->
+                Result(title, Status.WARN, context.getString(R.string.env_network_no_internet))
             else -> {
                 val kind = when {
                     capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
-                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "移动网络"
-                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "以太网"
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ->
+                        context.getString(R.string.env_network_cellular)
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) ->
+                        context.getString(R.string.env_network_ethernet)
                     capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> "VPN"
-                    else -> "已连接"
+                    else -> context.getString(R.string.env_network_other)
                 }
                 val validated = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-                Result("网络", Status.OK, if (validated) kind else "$kind（尚未验证连通性）")
+                Result(
+                    title, Status.OK,
+                    if (validated) kind else context.getString(R.string.env_network_unvalidated, kind)
+                )
             }
         }
     }
 
     private fun notifications(context: Context): Result {
+        val title = context.getString(R.string.env_notifications)
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            return Result("通知权限", Status.OK, "Android 12 及以下不需要单独授权")
+            return Result(title, Status.OK, context.getString(R.string.env_notifications_not_needed))
         }
         val granted = ContextCompat.checkSelfPermission(
             context, Manifest.permission.POST_NOTIFICATIONS
         ) == PackageManager.PERMISSION_GRANTED
         return if (granted) {
-            Result("通知权限", Status.OK, "已授权，能看到隧道的常驻通知")
+            Result(title, Status.OK, context.getString(R.string.env_notifications_ok))
         } else {
             Result(
-                "通知权限", Status.WARN,
-                "未授权。隧道仍然会在后台运行，但看不到状态通知，也没法从通知栏点回隧道页面。",
+                title, Status.WARN,
+                context.getString(R.string.env_notifications_missing),
                 Fix.NOTIFICATION_PERMISSION
             )
         }
@@ -168,12 +184,13 @@ object EnvironmentCheck {
 
     private fun battery(context: Context): Result {
         val power = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        val title = context.getString(R.string.env_battery)
         return if (power.isIgnoringBatteryOptimizations(context.packageName)) {
-            Result("电池优化", Status.OK, "已豁免，后台不容易被杀")
+            Result(title, Status.OK, context.getString(R.string.env_battery_ok))
         } else {
             Result(
-                "电池优化", Status.WARN,
-                "未豁免。息屏或切到后台一段时间后系统可能杀掉 frpc 进程，隧道断开、终端掉线。",
+                title, Status.WARN,
+                context.getString(R.string.env_battery_missing),
                 Fix.BATTERY_OPTIMISATION
             )
         }
@@ -187,17 +204,27 @@ object EnvironmentCheck {
         val credentialIds = credentials.map { it.id }.toSet()
 
         val orphaned = connections.filter { it.credentialId !in credentialIds }
-        val summary = "${connections.size} 个连接 · ${credentials.size} 份认证 · ${tunnels.size} 条隧道"
+        val title = context.getString(R.string.env_config)
+        val summary = context.getString(
+            R.string.env_config_summary, connections.size, credentials.size, tunnels.size
+        )
 
         return when {
             connections.isEmpty() && credentials.isEmpty() && tunnels.isEmpty() ->
-                Result("配置", Status.WARN, "还没有任何配置。先建一份认证，再建连接。")
+                Result(title, Status.WARN, context.getString(R.string.env_config_empty))
             orphaned.isNotEmpty() -> Result(
-                "配置", Status.FAIL,
-                "$summary。其中 ${orphaned.size} 个连接没有关联认证，进终端会被拒：" +
-                    orphaned.joinToString("、") { "「${it.displayName}」" }
+                title, Status.FAIL,
+                context.resources.getQuantityString(
+                    R.plurals.env_config_orphaned,
+                    orphaned.size,
+                    summary,
+                    orphaned.size,
+                    orphaned.joinToString(", ") {
+                        context.getString(R.string.quoted, it.displayName)
+                    }
+                )
             )
-            else -> Result("配置", Status.OK, summary)
+            else -> Result(title, Status.OK, summary)
         }
     }
 }

@@ -7,6 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.devhc.aidevmob.R
 import com.devhc.aidevmob.databinding.FragmentConnectionListBinding
 import com.devhc.aidevmob.frp.FrpcConfigStore
 import com.devhc.aidevmob.frp.FrpcRuntime
@@ -84,9 +85,11 @@ class ConnectionListFragment : Fragment() {
 
         val runningTunnels = runningIds.size
         binding.textSubtitle.text = if (runningTunnels > 0) {
-            "已有 $runningTunnels 条隧道在运行，点连接进入终端"
+            resources.getQuantityString(
+                R.plurals.connection_list_tunnels_running, runningTunnels, runningTunnels
+            )
         } else {
-            "点连接进入终端，需要的隧道会自动启动"
+            getString(R.string.connection_list_idle)
         }
     }
 

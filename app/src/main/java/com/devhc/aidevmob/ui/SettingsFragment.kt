@@ -12,16 +12,22 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.pm.PackageInfoCompat
+import androidx.core.os.LocaleListCompat
 import androidx.fragment.app.Fragment
+import com.devhc.aidevmob.R
 import com.devhc.aidevmob.databinding.FragmentSettingsBinding
 import com.devhc.aidevmob.databinding.ItemEnvCheckBinding
+import com.devhc.aidevmob.settings.ApkDownloader
 import com.devhc.aidevmob.settings.AppSettings
 import com.devhc.aidevmob.settings.EnvironmentCheck
 import com.devhc.aidevmob.settings.UpdateChecker
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import java.io.File
 import java.security.MessageDigest
+import java.util.Locale
 import kotlin.concurrent.thread
 
 /**
@@ -41,6 +47,7 @@ class SettingsFragment : Fragment() {
     /** Guards against queueing several checks by tapping the button repeatedly. */
     private var checking = false
     private var checkingUpdate = false
+    private var downloading = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -59,7 +66,7 @@ class SettingsFragment : Fragment() {
         setUpGlobalSettings()
         setUpUpdateCheck()
         showAbout()
-        binding.textHelp.text = HELP_TEXT
+        binding.textHelp.text = helpText()
 
         runEnvironmentCheck()
     }
@@ -82,7 +89,7 @@ class SettingsFragment : Fragment() {
         if (checking) return
         checking = true
         binding.buttonRecheck.isEnabled = false
-        binding.textCheckSummary.text = "检测中…"
+        binding.textCheckSummary.setText(R.string.settings_check_running)
 
         val appContext = requireContext().applicationContext
         // Off the main thread: this execs frpc and reads the network state.
@@ -95,7 +102,10 @@ class SettingsFragment : Fragment() {
                 results
                     .onSuccess(::showEnvironmentResults)
                     .onFailure {
-                        binding.textCheckSummary.text = "检测失败：${it.message ?: it::class.java.simpleName}"
+                        binding.textCheckSummary.text = getString(
+                            R.string.settings_check_failed,
+                            it.message ?: it::class.java.simpleName
+                        )
                     }
             }
         }
@@ -107,9 +117,10 @@ class SettingsFragment : Fragment() {
         val failed = results.count { it.status == EnvironmentCheck.Status.FAIL }
         val warned = results.count { it.status == EnvironmentCheck.Status.WARN }
         binding.textCheckSummary.text = when {
-            failed > 0 -> "$failed 项失败、$warned 项警告，共 ${results.size} 项"
-            warned > 0 -> "$warned 项警告，其余正常（共 ${results.size} 项）"
-            else -> "全部正常（共 ${results.size} 项）"
+            failed > 0 ->
+                getString(R.string.settings_check_summary_fail, failed, warned, results.size)
+            warned > 0 -> getString(R.string.settings_check_summary_warn, warned, results.size)
+            else -> getString(R.string.settings_check_summary_ok, results.size)
         }
 
         results.forEach { result ->
@@ -168,7 +179,7 @@ class SettingsFragment : Fragment() {
                         Uri.parse("package:${requireContext().packageName}")
                     )
                 )
-            }.onFailure { toast("打不开系统设置页") }
+            }.onFailure { toast(getString(R.string.settings_open_system_failed)) }
         }
     }
 
@@ -184,7 +195,7 @@ class SettingsFragment : Fragment() {
             settings.keepScreenOn = checked
         }
 
-        // Reads the same pref StartupPermissionCheck writes, so "不再提示" is reversible from here.
+        // Reads the same pref StartupPermissionCheck writes, so "Don't ask again" is reversible here.
         val prompts = requireContext()
             .getSharedPreferences(StartupPermissionCheck.PREFS_NAME, Context.MODE_PRIVATE)
         binding.switchPermissionPrompt.isChecked =
@@ -192,6 +203,48 @@ class SettingsFragment : Fragment() {
         binding.switchPermissionPrompt.setOnCheckedChangeListener { _, checked ->
             prompts.edit().putBoolean(StartupPermissionCheck.KEY_OPTED_OUT, !checked).apply()
         }
+
+        showLanguage()
+        binding.buttonLanguage.setOnClickListener { pickLanguage() }
+    }
+
+    // ---------------------------------------------------------------- language
+
+    /**
+     * AppCompat owns the choice rather than [AppSettings]: on API 33+ it forwards to the platform's
+     * per-app language (so the system settings entry and this one stay in sync), and below that it
+     * persists the value itself - see the autoStoreLocales service in the manifest.
+     */
+    private fun currentLanguageTag(): String =
+        AppCompatDelegate.getApplicationLocales().toLanguageTags()
+
+    private fun showLanguage() {
+        binding.textLanguage.text = languageLabel(currentLanguageTag())
+    }
+
+    /** The language's own endonym, so it is readable while the UI is still in the other language. */
+    private fun languageLabel(tag: String): String {
+        if (tag.isEmpty()) return getString(R.string.settings_language_system)
+        val locale = Locale.forLanguageTag(tag)
+        return locale.getDisplayName(locale).replaceFirstChar { it.uppercase(locale) }
+    }
+
+    private fun pickLanguage() {
+        val tags = SUPPORTED_LANGUAGES
+        val labels = tags.map(::languageLabel).toTypedArray()
+        val current = tags.indexOf(currentLanguageTag()).takeIf { it >= 0 } ?: 0
+
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.settings_language_dialog_title)
+            .setSingleChoiceItems(labels, current) { dialog, which ->
+                dialog.dismiss()
+                // Recreates the activity, which is why nothing after this point may touch binding.
+                AppCompatDelegate.setApplicationLocales(
+                    LocaleListCompat.forLanguageTags(tags[which])
+                )
+            }
+            .setNegativeButton(R.string.action_cancel, null)
+            .show()
     }
 
     private fun adjustFontSize(delta: Int) {
@@ -202,7 +255,8 @@ class SettingsFragment : Fragment() {
     }
 
     private fun showFontSize() {
-        binding.textFontSize.text = "${settings.terminalFontSize} sp，下次进入终端生效"
+        binding.textFontSize.text =
+            getString(R.string.settings_font_size_value, settings.terminalFontSize)
         binding.buttonFontSmaller.isEnabled = settings.terminalFontSize > AppSettings.MIN_FONT_SIZE
         binding.buttonFontBigger.isEnabled = settings.terminalFontSize < AppSettings.MAX_FONT_SIZE
     }
@@ -211,7 +265,8 @@ class SettingsFragment : Fragment() {
 
     private fun setUpUpdateCheck() {
         binding.editUpdateToken.setText(settings.updateToken.orEmpty())
-        binding.textUpdateState.text = "当前版本 ${versionName()}（versionCode ${versionCode()}）"
+        binding.textUpdateState.text =
+            getString(R.string.settings_update_current, versionName(), versionCode())
 
         binding.buttonOpenReleases.setOnClickListener { openUrl(UpdateChecker.RELEASES_URL) }
         binding.buttonCheckUpdate.setOnClickListener {
@@ -224,12 +279,13 @@ class SettingsFragment : Fragment() {
         if (checkingUpdate) return
         checkingUpdate = true
         binding.buttonCheckUpdate.isEnabled = false
-        binding.textUpdateState.text = "正在向 GitHub 查询…"
+        binding.textUpdateState.setText(R.string.settings_update_querying)
 
         val current = versionName()
         val token = settings.updateToken
+        val appContext = requireContext().applicationContext
         thread(name = "update-check") {
-            val outcome = UpdateChecker.check(current, token)
+            val outcome = UpdateChecker.check(appContext, current, token)
             view?.post {
                 if (_binding == null) return@post
                 checkingUpdate = false
@@ -241,32 +297,122 @@ class SettingsFragment : Fragment() {
 
     private fun showUpdateOutcome(outcome: UpdateChecker.Outcome, current: String) {
         when (outcome) {
-            is UpdateChecker.Outcome.UpToDate ->
-                binding.textUpdateState.text = "已是最新（本地 $current，最新发布 ${outcome.version}）"
+            is UpdateChecker.Outcome.UpToDate -> binding.textUpdateState.text =
+                getString(R.string.settings_update_up_to_date, current, outcome.version)
 
-            UpdateChecker.Outcome.TokenRequired ->
-                binding.textUpdateState.text =
-                    "没有填 token，无法查询私有仓库。可以先用「打开发布页」在浏览器里看（浏览器里你是登录状态）。"
-
-            is UpdateChecker.Outcome.Failed ->
-                binding.textUpdateState.text = "查询失败：${outcome.message}"
+            is UpdateChecker.Outcome.Failed -> binding.textUpdateState.text =
+                getString(R.string.settings_update_failed, outcome.message)
 
             is UpdateChecker.Outcome.UpdateAvailable -> {
-                binding.textUpdateState.text = "有新版本 ${outcome.version}（本地 $current）"
-                MaterialAlertDialogBuilder(requireContext())
-                    .setTitle("发现新版本 ${outcome.version}")
-                    .setMessage(
-                        buildString {
-                            append("本地 $current → ${outcome.version}\n")
-                            outcome.notes?.let { append("\n$it") }
-                            append("\n\n下载后手动安装即可覆盖升级（同一个签名 key）。")
-                        }.trim()
-                    )
-                    .setNegativeButton("以后再说", null)
-                    .setPositiveButton("去下载") { _, _ -> openUrl(outcome.url) }
-                    .show()
+                binding.textUpdateState.text =
+                    getString(R.string.settings_update_available, outcome.version, current)
+                showUpdateDialog(outcome, current)
             }
         }
+    }
+
+    private fun showUpdateDialog(update: UpdateChecker.Outcome.UpdateAvailable, current: String) {
+        val message = buildString {
+            append(getString(R.string.settings_update_dialog_message, current, update.version))
+            update.notes?.let { append("\n\n$it") }
+            append("\n\n")
+            append(getString(R.string.settings_update_dialog_footer, UpdateChecker.MIRROR_HOST))
+        }
+
+        val dialog = MaterialAlertDialogBuilder(requireContext())
+            .setTitle(getString(R.string.settings_update_dialog_title, update.version))
+            .setMessage(message)
+            .setNegativeButton(R.string.action_later, null)
+
+        val apkUrl = update.apkUrl
+        if (apkUrl == null) {
+            // Nothing to install; the releases page is the only thing left to offer.
+            binding.textUpdateState.setText(R.string.settings_update_no_apk)
+            dialog.setPositiveButton(R.string.settings_action_open_releases) { _, _ ->
+                openUrl(update.pageUrl)
+            }
+        } else {
+            dialog.setPositiveButton(R.string.settings_update_action_download) { _, _ ->
+                downloadAndInstall(update.version, apkUrl)
+            }
+            dialog.setNeutralButton(R.string.settings_action_open_releases) { _, _ ->
+                openUrl(update.pageUrl)
+            }
+        }
+        dialog.show()
+    }
+
+    // ---------------------------------------------------------------- download / install
+
+    /**
+     * Pulls the APK down and hands it to the system installer. github.com's release CDN is blocked or
+     * unusably slow on some networks, so a failure there simply falls through to the mirror rather
+     * than leaving the user to work out the alternative URL themselves.
+     */
+    private fun downloadAndInstall(version: String, apkUrl: String) {
+        if (downloading) return
+        if (!canInstallPackages()) {
+            requestInstallPermission()
+            return
+        }
+
+        downloading = true
+        binding.buttonCheckUpdate.isEnabled = false
+        val urls = UpdateChecker.withMirror(apkUrl)
+        val appContext = requireContext().applicationContext
+
+        thread(name = "update-download") {
+            val result = ApkDownloader.download(appContext, urls) { sourceIndex, percent ->
+                view?.post {
+                    if (_binding == null) return@post
+                    binding.textUpdateState.text = getString(
+                        if (sourceIndex == 0) R.string.settings_update_downloading
+                        else R.string.settings_update_downloading_mirror,
+                        version,
+                        percent.coerceAtLeast(0)
+                    )
+                }
+            }
+            view?.post {
+                if (_binding == null) return@post
+                downloading = false
+                binding.buttonCheckUpdate.isEnabled = true
+                result
+                    .onSuccess { apk ->
+                        binding.textUpdateState.text =
+                            getString(R.string.settings_update_downloaded, version)
+                        startInstall(apk)
+                    }
+                    .onFailure { error ->
+                        binding.textUpdateState.text = getString(
+                            R.string.settings_update_download_failed,
+                            error.message ?: error::class.java.simpleName
+                        )
+                    }
+            }
+        }
+    }
+
+    private fun startInstall(apk: File) {
+        try {
+            startActivity(ApkDownloader.installIntent(requireContext(), apk))
+        } catch (e: ActivityNotFoundException) {
+            toast(getString(R.string.settings_update_install_failed))
+        }
+    }
+
+    private fun canInstallPackages(): Boolean =
+        requireContext().packageManager.canRequestPackageInstalls()
+
+    /** Sends the user to the "install unknown apps" screen; it can only be granted from there. */
+    private fun requestInstallPermission() {
+        toast(getString(R.string.settings_update_install_permission))
+        startSystemScreen(
+            Intent(
+                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:${requireContext().packageName}")
+            )
+        )
     }
 
     // ---------------------------------------------------------------- about / help
@@ -274,23 +420,39 @@ class SettingsFragment : Fragment() {
     private fun showAbout() {
         val context = requireContext()
         binding.textAbout.text = buildString {
-            appendLine("版本 ${versionName()}（versionCode ${versionCode()}）")
-            appendLine("包名 ${context.packageName}")
-            appendLine("设备 ${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
-            appendLine("ABI ${Build.SUPPORTED_ABIS.firstOrNull() ?: "未知"}")
+            appendLine(getString(R.string.settings_about_version, versionName(), versionCode()))
+            appendLine(getString(R.string.settings_about_package, context.packageName))
+            appendLine(
+                getString(
+                    R.string.settings_about_device,
+                    Build.MANUFACTURER, Build.MODEL, Build.VERSION.RELEASE, Build.VERSION.SDK_INT
+                )
+            )
+            appendLine(
+                getString(
+                    R.string.settings_about_abi,
+                    Build.SUPPORTED_ABIS.firstOrNull() ?: getString(R.string.value_unknown)
+                )
+            )
             // Lets you tell a self-built APK from a released one without a computer - the same digest
             // apksigner prints for the release key.
-            appendLine("签名 SHA-256 ${signingFingerprint(context) ?: "读取失败"}")
+            appendLine(
+                getString(
+                    R.string.settings_about_signature,
+                    signingFingerprint(context)
+                        ?: getString(R.string.settings_about_signature_failed)
+                )
+            )
             appendLine()
-            appendLine("终端引擎来自 Termux 的 terminal-view / terminal-emulator（Apache-2.0）")
-            append("隧道使用内置 frpc（STCP visitor），SSH 基于 sshj + BouncyCastle")
+            appendLine(getString(R.string.settings_about_credits_terminal))
+            append(getString(R.string.settings_about_credits_tunnel))
         }
-        binding.buttonOpenRepo.setOnClickListener { openUrl("https://github.com/${UpdateChecker.REPO}") }
+        binding.buttonOpenRepo.setOnClickListener { openUrl(UpdateChecker.REPO_URL) }
     }
 
     private fun versionName(): String = runCatching {
         requireContext().packageManager.getPackageInfo(requireContext().packageName, 0).versionName
-    }.getOrNull() ?: "未知"
+    }.getOrNull() ?: getString(R.string.value_unknown)
 
     private fun versionCode(): Long = runCatching {
         PackageInfoCompat.getLongVersionCode(
@@ -319,7 +481,7 @@ class SettingsFragment : Fragment() {
         try {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
         } catch (e: ActivityNotFoundException) {
-            toast("没有可以打开链接的应用")
+            toast(getString(R.string.settings_no_browser))
         }
     }
 
@@ -327,15 +489,16 @@ class SettingsFragment : Fragment() {
         Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
     }
 
+    /** Four paragraphs rather than one string, so each stays a translatable unit. */
+    private fun helpText(): String = listOf(
+        R.string.settings_help_setup,
+        R.string.settings_help_tmux,
+        R.string.settings_help_keys,
+        R.string.settings_help_troubleshoot
+    ).joinToString("\n\n") { getString(it) }
+
     private companion object {
-        val HELP_TEXT = """
-            配置顺序：先建「认证」（用户名 + 密码或私钥），再建「隧道」（frpc STCP visitor），最后建「连接」把两者关联起来。选了隧道之后 Host/Port 由隧道的本地端口决定，不用手填。
-
-            tmux：在连接编辑页点「探测」可以列出远端已有的 session 直接选，也可以新建或不用。用 tmux 的话断线重连能无损续接，不用 tmux 断线就等于丢失当前 shell。
-
-            终端按键行：ESC / CTRL / 方向键（长按连发）/ TAB / S-TAB / ^C / ^D / Home / End / PgUp / PgDn 等，可以左右滑动。CTRL 是粘滞的，点一下再按字母等于 Ctrl+字母。
-
-            连不上时的排查顺序：先看上面的环境检测，再去「隧道」页看那条隧道的日志（frpc 的输出都在里面），最后确认远端 sshd 和端口是否可达。
-        """.trimIndent()
+        /** Offered in the language picker; must match res/xml/locales_config.xml. */
+        val SUPPORTED_LANGUAGES = listOf("", "en", "zh-CN")
     }
 }

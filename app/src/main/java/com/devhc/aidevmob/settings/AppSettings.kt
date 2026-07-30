@@ -33,8 +33,8 @@ class AppSettings(context: Context) {
         set(value) = prefs.edit().putBoolean(KEY_KEEP_SCREEN_ON, value).apply()
 
     /**
-     * GitHub token used only to read the releases list. Needed because this repo is private: without
-     * one the API answers 404 and the in-app update check cannot work at all.
+     * GitHub token used only to read the releases list. Optional: the repo is public, so this is
+     * needed only to get past the anonymous rate limit.
      */
     var updateToken: String?
         get() = prefs.getString(KEY_UPDATE_TOKEN, null)?.takeIf { it.isNotBlank() }

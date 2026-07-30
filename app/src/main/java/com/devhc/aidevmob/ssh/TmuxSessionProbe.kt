@@ -1,5 +1,7 @@
 package com.devhc.aidevmob.ssh
 
+import android.content.Context
+import com.devhc.aidevmob.R
 import net.schmizz.sshj.common.IOUtils
 import net.schmizz.sshj.SSHClient
 import java.io.IOException
@@ -10,13 +12,7 @@ data class TmuxSession(
     val name: String,
     val windows: Int,
     val attached: Boolean
-) {
-    val summary: String
-        get() = buildString {
-            append("$windows 个窗口")
-            if (attached) append(" · 已有客户端连接")
-        }
-}
+)
 
 /**
  * Lists the tmux sessions living on the remote host, so the connection editor can offer them instead
@@ -60,27 +56,31 @@ object TmuxSessionProbe {
      * @throws IOException when the host is unreachable, auth fails, or tmux can't be run.
      */
     @Throws(IOException::class)
-    fun list(config: ConnectionConfig, hostKeyVerifier: TofuHostKeyVerifier): List<TmuxSession> {
+    fun list(
+        context: Context,
+        config: ConnectionConfig,
+        hostKeyVerifier: TofuHostKeyVerifier
+    ): List<TmuxSession> {
         val ssh = openSshClient(config, hostKeyVerifier)
         try {
             var lastFailure: String? = null
             for (shellFlags in SHELL_FLAGS) {
                 // A shell that hangs or dies on one flavour shouldn't stop the next attempt; only the
                 // last message is reported if every attempt fails.
-                val attempt = runCatching { runList(ssh, shellFlags) }
+                val attempt = runCatching { runList(context, ssh, shellFlags) }
                     .getOrElse { Outcome.Failed(it.message ?: it::class.java.simpleName) }
                 when (attempt) {
                     is Outcome.Listed -> return attempt.sessions
                     is Outcome.Failed -> lastFailure = attempt.message
                 }
             }
-            throw IOException(lastFailure ?: "无法在远端执行 tmux")
+            throw IOException(lastFailure ?: context.getString(R.string.tmux_error_not_runnable))
         } finally {
             runCatching { ssh.disconnect() }
         }
     }
 
-    private fun runList(ssh: SSHClient, shellFlags: String): Outcome {
+    private fun runList(context: Context, ssh: SSHClient, shellFlags: String): Outcome {
         ssh.startSession().use { session ->
             val command = session.exec(
                 "\${SHELL:-/bin/sh} $shellFlags ${shellQuote(PATH_PREFIX + LIST_COMMAND)}"
@@ -98,11 +98,14 @@ object TmuxSessionProbe {
                 looksLikeNoServer(stderr) -> Outcome.Listed(emptyList())
                 exitStatus == 0 -> Outcome.Listed(emptyList())
                 looksLikeMissingTmux(stderr) -> Outcome.Failed(
-                    "远端找不到 tmux 命令，请确认它已安装，或它所在目录在登录 shell 的 PATH 里"
+                    context.getString(R.string.tmux_error_not_found)
                 )
                 else -> Outcome.Failed(
                     stderr.trim().lines().lastOrNull { it.isNotBlank() }
-                        ?: "tmux list-sessions 失败（退出码 $exitStatus）"
+                        ?: context.getString(
+                            R.string.tmux_error_list_failed,
+                            exitStatus?.toString() ?: context.getString(R.string.value_unknown)
+                        )
                 )
             }
         }

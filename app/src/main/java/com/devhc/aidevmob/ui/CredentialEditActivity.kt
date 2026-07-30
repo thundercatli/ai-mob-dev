@@ -42,7 +42,10 @@ class CredentialEditActivity : AppCompatActivity() {
             store.list().firstOrNull { it.id == id }
         }
 
-        binding.toolbar.title = if (existing != null) "编辑认证" else "新建认证"
+        binding.toolbar.setTitle(
+            if (existing != null) R.string.credential_edit_title_edit
+            else R.string.credential_edit_title_new
+        )
         binding.toolbar.menu.findItem(R.id.actionDelete)?.isVisible = existing != null
         binding.toolbar.setNavigationOnClickListener { finish() }
         binding.toolbar.setOnMenuItemClickListener { item ->
@@ -104,14 +107,15 @@ class CredentialEditActivity : AppCompatActivity() {
 
         when {
             content == null -> {
-                binding.textKeyStatus.text = "读取「$name」失败，或文件过大"
+                binding.textKeyStatus.text = getString(R.string.credential_key_read_failed, name)
             }
             name.endsWith(".pub") || content.startsWith("ssh-") || content.startsWith("ecdsa-") -> {
-                binding.textKeyStatus.text = "「$name」看起来是公钥，请选择对应的私钥文件"
+                binding.textKeyStatus.text = getString(R.string.credential_key_is_public, name)
             }
             else -> {
                 binding.editPrivateKey.setText(content.trim())
-                binding.textKeyStatus.text = "已从「$name」读入 · ${describeKey(content)}"
+                binding.textKeyStatus.text =
+                    getString(R.string.credential_key_from_file, name, describeKey(content))
             }
         }
     }
@@ -121,7 +125,7 @@ class CredentialEditActivity : AppCompatActivity() {
             contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
                 ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
         }.getOrNull()
-        return fromProvider ?: uri.lastPathSegment ?: "文件"
+        return fromProvider ?: uri.lastPathSegment ?: getString(R.string.credential_file_fallback_name)
     }
 
     private fun pasteKeyFromClipboard() {
@@ -129,20 +133,21 @@ class CredentialEditActivity : AppCompatActivity() {
         val text = clipboard.primaryClip?.takeIf { it.itemCount > 0 }
             ?.getItemAt(0)?.coerceToText(this)?.toString()?.trim()
         if (text.isNullOrEmpty()) {
-            binding.textKeyStatus.text = "剪贴板里没有文本"
+            binding.textKeyStatus.setText(R.string.credential_clipboard_empty)
             return
         }
         binding.editPrivateKey.setText(text)
-        binding.textKeyStatus.text = "已从剪贴板读入 · ${describeKey(text)}"
+        binding.textKeyStatus.text =
+            getString(R.string.credential_key_from_clipboard, describeKey(text))
     }
 
     /** A one-line "is this the key I think it is" summary, without exposing the key material. */
     private fun describeKey(pem: String?): String {
-        if (pem.isNullOrBlank()) return "尚未填写私钥"
+        if (pem.isNullOrBlank()) return getString(R.string.credential_key_missing)
         val header = pem.lineSequence().firstOrNull { it.startsWith("-----BEGIN") }
-            ?: return "内容不像 PEM 私钥，仍可保存但可能无法登录"
+            ?: return getString(R.string.credential_key_not_pem)
         val type = header.removePrefix("-----BEGIN ").removeSuffix("-----").trim()
-        return "$type · ${pem.length} 字符"
+        return getString(R.string.credential_key_summary, type, pem.length)
     }
 
     private fun save(): Boolean {
@@ -150,14 +155,14 @@ class CredentialEditActivity : AppCompatActivity() {
 
         val username = binding.editUsername.text?.toString()?.trim().orEmpty()
         if (username.isEmpty()) {
-            showError("请填写用户名")
+            showError(getString(R.string.credential_error_username))
             return false
         }
 
         val isPassword = binding.buttonAuthPassword.isChecked
         val privateKey = binding.editPrivateKey.text?.toString()?.trim().orEmpty()
         if (!isPassword && privateKey.isEmpty()) {
-            showError("请选择私钥文件或粘贴私钥内容")
+            showError(getString(R.string.credential_error_key))
             return false
         }
 
@@ -182,15 +187,17 @@ class CredentialEditActivity : AppCompatActivity() {
         val target = existing ?: return
         val usedBy = ConnectionStore(applicationContext).list().count { it.credentialId == target.id }
         val message = if (usedBy > 0) {
-            "「${target.displayName}」正被 $usedBy 个连接使用，删除后这些连接需要重新选择认证。确定删除吗？"
+            resources.getQuantityString(
+                R.plurals.credential_delete_in_use, usedBy, target.displayName, usedBy
+            )
         } else {
-            "确定删除「${target.displayName}」吗？"
+            getString(R.string.credential_delete_message, target.displayName)
         }
         MaterialAlertDialogBuilder(this)
-            .setTitle("删除认证")
+            .setTitle(R.string.credential_delete_title)
             .setMessage(message)
-            .setNegativeButton("取消", null)
-            .setPositiveButton("删除") { _, _ ->
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(R.string.action_delete) { _, _ ->
                 store.delete(target.id)
                 finish()
             }

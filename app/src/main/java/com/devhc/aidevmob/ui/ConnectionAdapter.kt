@@ -3,6 +3,7 @@ package com.devhc.aidevmob.ui
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
+import com.devhc.aidevmob.R
 import com.devhc.aidevmob.databinding.ItemConnectionBinding
 import com.google.android.material.color.MaterialColors
 import com.devhc.aidevmob.ssh.ConnectionConfig
@@ -48,10 +49,12 @@ class ConnectionAdapter(
 
         fun bind(row: Row) {
             val config = row.config
+            val context = binding.root.context
             binding.textTunnel.text = when {
-                row.tunnelName == null -> "直连"
-                row.tunnelRunning -> "隧道 · ${row.tunnelName} · 运行中"
-                else -> "隧道 · ${row.tunnelName}"
+                row.tunnelName == null -> context.getString(R.string.connection_direct)
+                row.tunnelRunning ->
+                    context.getString(R.string.connection_via_tunnel_running, row.tunnelName)
+                else -> context.getString(R.string.connection_via_tunnel, row.tunnelName)
             }
             binding.textTunnel.setTextColor(
                 MaterialColors.getColor(
@@ -61,10 +64,11 @@ class ConnectionAdapter(
                 )
             )
             binding.textName.text = config.displayName
-            binding.textSubtitle.text = when (val credential = row.credentialName) {
-                null -> "${config.subtitle}  ·  未选择认证"
-                else -> "${config.subtitle}  ·  $credential"
-            }
+            binding.textSubtitle.text = context.getString(
+                R.string.connection_row_subtitle,
+                config.subtitle,
+                row.credentialName ?: context.getString(R.string.connection_no_credential)
+            )
             binding.root.setOnClickListener { onOpen(config) }
             binding.buttonEdit.setOnClickListener { onEdit(config) }
         }

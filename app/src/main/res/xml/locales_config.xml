@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Languages this app ships translations for. Android 13+ reads this to build the per-app
+     language entry in system settings; AppSettings.SUPPORTED_LANGUAGES mirrors it for the in-app
+     picker, which is what users below 13 get. -->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="en" />
+    <locale android:name="zh-CN" />
+</locale-config>

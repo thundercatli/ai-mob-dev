@@ -50,7 +50,7 @@
             android:paddingBottom="0dp"
             android:insetTop="0dp"
             android:insetBottom="0dp"
-            android:text="去设置"
+            android:text="@string/action_open_settings"
             android:visibility="gone" />
     </LinearLayout>
 

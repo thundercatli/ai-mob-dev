@@ -12,7 +12,7 @@
         android:layout_height="?attr/actionBarSize"
         android:background="@color/terminal_key_bg"
         app:navigationIcon="@drawable/ic_arrow_back"
-        app:navigationContentDescription="返回"
+        app:navigationContentDescription="@string/action_back"
         app:titleTextColor="#FFFFFF"
         app:subtitleTextColor="#B0BEC5"
         app:menu="@menu/terminal_menu" />

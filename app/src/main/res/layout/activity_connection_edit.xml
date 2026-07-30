@@ -11,9 +11,9 @@
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
         app:navigationIcon="@drawable/ic_arrow_back"
-        app:navigationContentDescription="返回"
+        app:navigationContentDescription="@string/action_back"
         app:navigationIconTint="?attr/colorOnSurface"
-        app:title="连接设置"
+        app:title="@string/connection_edit_toolbar"
         app:menu="@menu/connection_edit_menu" />
 
     <ScrollView
@@ -46,7 +46,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="SSH 目标"
+                        android:text="@string/connection_section_target"
                         android:textAppearance="?attr/textAppearanceTitleSmall"
                         android:textColor="?attr/colorOnSurfaceVariant"
                         android:layout_marginBottom="8dp" />
@@ -55,7 +55,7 @@
                         style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:hint="名称（留空则显示 user@host）">
+                        android:hint="@string/connection_hint_name">
                         <com.google.android.material.textfield.TextInputEditText
                             android:id="@+id/editName"
                             android:layout_width="match_parent"
@@ -69,7 +69,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="10dp"
-                        android:hint="经由隧道">
+                        android:hint="@string/connection_hint_tunnel">
                         <com.google.android.material.textfield.MaterialAutoCompleteTextView
                             android:id="@+id/dropdownTunnel"
                             android:layout_width="match_parent"
@@ -91,7 +91,7 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="10dp"
-                            android:hint="Host（例如 192.168.1.10）">
+                            android:hint="@string/connection_hint_host">
                             <com.google.android.material.textfield.TextInputEditText
                                 android:id="@+id/editHost"
                                 android:layout_width="match_parent"
@@ -105,7 +105,7 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="10dp"
-                            android:hint="Port（默认 22）">
+                            android:hint="@string/connection_hint_port">
                             <com.google.android.material.textfield.TextInputEditText
                                 android:id="@+id/editPort"
                                 android:layout_width="match_parent"
@@ -132,8 +132,8 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="10dp"
                         app:helperTextEnabled="true"
-                        app:helperText="留空则只开普通 shell"
-                        android:hint="tmux session 名">
+                        app:helperText="@string/connection_helper_tmux"
+                        android:hint="@string/connection_hint_tmux">
                         <com.google.android.material.textfield.TextInputEditText
                             android:id="@+id/editTmuxSession"
                             android:layout_width="match_parent"
@@ -150,7 +150,7 @@
                         android:layout_gravity="end"
                         android:layout_marginTop="4dp"
                         app:icon="@drawable/ic_search"
-                        android:text="探测远端 session" />
+                        android:text="@string/connection_action_probe" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -171,7 +171,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="认证"
+                        android:text="@string/connection_section_credential"
                         android:textAppearance="?attr/textAppearanceTitleSmall"
                         android:textColor="?attr/colorOnSurfaceVariant"
                         android:layout_marginBottom="8dp" />
@@ -180,7 +180,7 @@
                         style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:hint="使用的认证">
+                        android:hint="@string/connection_hint_credential">
                         <com.google.android.material.textfield.MaterialAutoCompleteTextView
                             android:id="@+id/dropdownCredential"
                             android:layout_width="match_parent"
@@ -211,7 +211,7 @@
                             android:layout_weight="1"
                             android:layout_marginEnd="8dp"
                             app:cornerRadius="12dp"
-                            android:text="新建认证" />
+                            android:text="@string/connection_action_new_credential" />
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/buttonEditCredential"
@@ -220,7 +220,7 @@
                             android:layout_height="48dp"
                             android:layout_weight="1"
                             app:cornerRadius="12dp"
-                            android:text="编辑所选" />
+                            android:text="@string/connection_action_edit_credential" />
                     </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
@@ -239,7 +239,7 @@
                 android:layout_height="56dp"
                 android:layout_marginTop="16dp"
                 app:cornerRadius="16dp"
-                android:text="保存并连接" />
+                android:text="@string/connection_action_save_and_connect" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/buttonSave"
@@ -248,7 +248,7 @@
                 android:layout_height="52dp"
                 android:layout_marginTop="10dp"
                 app:cornerRadius="16dp"
-                android:text="只保存" />
+                android:text="@string/action_save_only" />
 
         </LinearLayout>
     </ScrollView>

@@ -1,0 +1,317 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tab_connect">连接</string>
+    <string name="tab_credential">认证</string>
+    <string name="tab_tunnel">隧道</string>
+    <string name="tab_settings">设置</string>
+
+    <!-- Used by the vendored com.termux.view.textselection classes. -->
+    <string name="paste_text">粘贴</string>
+    <string name="copy_text">复制</string>
+    <string name="text_selection_more">更多…</string>
+
+    <!-- ============================================================ shared -->
+    <string name="action_save">保存</string>
+    <string name="action_save_only">只保存</string>
+    <string name="action_cancel">取消</string>
+    <string name="action_delete">删除</string>
+    <string name="action_edit">编辑</string>
+    <string name="action_back">返回</string>
+    <string name="action_use">使用</string>
+    <string name="action_later">以后再说</string>
+    <string name="action_open_settings">去设置</string>
+    <string name="value_unknown">未知</string>
+    <string name="error_unknown">未知错误</string>
+    <string name="copy_of">%1$s 副本</string>
+    <string name="quoted">「%1$s」</string>
+
+    <!-- ============================================================ connection list -->
+    <string name="connection_list_subtitle">选择一个连接进入终端</string>
+    <string name="connection_list_empty">还没有连接，点右下角新建一个</string>
+    <string name="connection_new">新建连接</string>
+    <plurals name="connection_list_tunnels_running">
+        <item quantity="other">已有 %1$d 条隧道在运行，点连接进入终端</item>
+    </plurals>
+    <string name="connection_list_idle">点连接进入终端，需要的隧道会自动启动</string>
+    <string name="connection_direct">直连</string>
+    <string name="connection_via_tunnel">隧道 · %1$s</string>
+    <string name="connection_via_tunnel_running">隧道 · %1$s · 运行中</string>
+    <string name="connection_row_subtitle">%1$s  ·  %2$s</string>
+    <string name="connection_no_credential">未选择认证</string>
+
+    <!-- ============================================================ credential list -->
+    <string name="credential_list_title">认证</string>
+    <string name="credential_list_subtitle">用户名 + 密码或私钥，可被多个连接复用</string>
+    <string name="credential_list_empty">还没有认证，点右下角新建一个</string>
+    <string name="credential_new">新建认证</string>
+    <string name="credential_unused">暂未被连接使用</string>
+    <plurals name="credential_used_by">
+        <item quantity="other">被 %1$d 个连接使用</item>
+    </plurals>
+    <string name="credential_default_name">认证</string>
+
+    <!-- ============================================================ tunnel list -->
+    <string name="tunnel_list_title">frpc STCP 隧道</string>
+    <string name="tunnel_list_subtitle">内置 frpc（arm64），以 visitor 角色连接 frps，不开公网端口</string>
+    <string name="tunnel_list_empty">还没有隧道，点右下角新建一个</string>
+    <string name="tunnel_new">新建隧道</string>
+    <string name="tunnel_state_stopped">未启动</string>
+    <string name="tunnel_state_starting">连接中…</string>
+    <string name="tunnel_state_running">已连接 · 本地 127.0.0.1:%1$d</string>
+    <string name="tunnel_state_error">出错：%1$s</string>
+    <string name="tunnel_action_start">启动</string>
+    <string name="tunnel_action_stop">停止</string>
+    <string name="tunnel_action_log">日志</string>
+    <string name="tunnel_action_log_collapse">收起</string>
+    <string name="tunnel_notification_title">frpc STCP 隧道</string>
+    <string name="tunnel_notification_channel">frpc 隧道状态</string>
+    <string name="tunnel_notification_none">没有运行中的隧道</string>
+    <plurals name="tunnel_notification_all_up">
+        <item quantity="other">已连接 %1$d 条隧道</item>
+    </plurals>
+    <string name="tunnel_notification_partial">%1$d/%2$d 条隧道已连接</string>
+    <string name="tunnel_error_not_executable">frpc 二进制不可执行：%1$s</string>
+    <string name="tunnel_error_gave_up">退出码 %1$d，已重试 %2$d 次，停止重试</string>
+    <string name="tunnel_gate_failed">隧道「%1$s」启动失败：%2$s</string>
+    <string name="tunnel_gate_timeout">隧道「%1$s」启动超时</string>
+
+    <!-- ============================================================ connection editor -->
+    <string name="connection_edit_toolbar">连接设置</string>
+    <string name="connection_edit_title_new">新建连接</string>
+    <string name="connection_edit_title_edit">编辑连接</string>
+    <string name="connection_edit_title_duplicate">复制连接</string>
+    <string name="connection_edit_delete">删除此连接</string>
+    <string name="connection_edit_duplicate">复制为新连接</string>
+    <string name="connection_section_target">SSH 目标</string>
+    <string name="connection_hint_name">名称（留空则显示 user@host）</string>
+    <string name="connection_hint_tunnel">经由隧道</string>
+    <string name="connection_hint_host">Host（例如 192.168.1.10）</string>
+    <string name="connection_hint_port">Port（默认 22）</string>
+    <string name="connection_hint_tmux">tmux session 名</string>
+    <string name="connection_helper_tmux">留空则只开普通 shell</string>
+    <string name="connection_action_probe">探测远端 session</string>
+    <string name="connection_section_credential">认证</string>
+    <string name="connection_hint_credential">使用的认证</string>
+    <string name="connection_action_new_credential">新建认证</string>
+    <string name="connection_action_edit_credential">编辑所选</string>
+    <string name="connection_action_save_and_connect">保存并连接</string>
+    <string name="connection_no_tunnel">不使用隧道（直连）</string>
+    <string name="connection_tunnel_target">SSH 目标由隧道决定：%1$s:%2$d（「%3$s」的本地端口）</string>
+    <string name="connection_credential_none">还没有任何认证，点「新建认证」添加用户名 + 密码或私钥</string>
+    <string name="connection_credential_pick">请选择一个认证</string>
+    <string name="connection_error_no_credential_selected">还没有选择认证</string>
+    <string name="connection_error_pick_credential">请选择一个认证（没有的话点「新建认证」）</string>
+    <string name="connection_error_host_port">请填写 Host / Port</string>
+    <string name="connection_delete_title">删除连接</string>
+    <string name="connection_delete_message">确定删除「%1$s」吗？</string>
+
+    <!-- tmux session picker -->
+    <string name="tmux_probing">正在连接远端，读取 tmux session…</string>
+    <string name="tmux_probe_failed">探测失败：%1$s</string>
+    <string name="tmux_picker_title">选择 tmux session</string>
+    <string name="tmux_picker_title_empty">远端还没有 tmux session</string>
+    <string name="tmux_picker_subtitle_empty">可以新建一个，或者这次只开普通 shell</string>
+    <plurals name="tmux_picker_subtitle">
+        <item quantity="other">%1$s 上共 %2$d 个 session</item>
+    </plurals>
+    <string name="tmux_action_new_session">新建一个 session</string>
+    <string name="tmux_action_no_session">不使用 tmux，只开普通 shell</string>
+    <plurals name="tmux_windows">
+        <item quantity="other">%1$d 个窗口</item>
+    </plurals>
+    <string name="tmux_attached">已连接</string>
+    <string name="tmux_has_client">已有客户端连接</string>
+    <string name="tmux_summary">%1$s · %2$s</string>
+    <string name="tmux_helper_attach">接入已有 session · %1$s</string>
+    <string name="tmux_helper_new">连接时新建 session「%1$s」</string>
+    <string name="tmux_new_dialog_title">新建 tmux session</string>
+    <string name="tmux_new_dialog_hint">session 名</string>
+    <string name="tmux_new_dialog_helper">已存在同名 session 时会直接接入</string>
+    <string name="tmux_error_not_runnable">无法在远端执行 tmux</string>
+    <string name="tmux_error_not_found">远端找不到 tmux 命令，请确认它已安装，或它所在目录在登录 shell 的 PATH 里</string>
+    <string name="tmux_error_list_failed">tmux list-sessions 失败（退出码 %1$s）</string>
+
+    <!-- ============================================================ credential editor -->
+    <string name="credential_edit_toolbar">认证</string>
+    <string name="credential_edit_title_new">新建认证</string>
+    <string name="credential_edit_title_edit">编辑认证</string>
+    <string name="credential_section_identity">身份</string>
+    <string name="credential_hint_name">名称</string>
+    <string name="credential_helper_name">留空则显示用户名</string>
+    <string name="credential_hint_username">用户名</string>
+    <string name="credential_section_auth">登录方式</string>
+    <string name="credential_auth_password">密码</string>
+    <string name="credential_auth_key">私钥</string>
+    <string name="credential_hint_password">密码</string>
+    <string name="credential_action_pick_file">从文件选择</string>
+    <string name="credential_action_paste">粘贴剪贴板</string>
+    <string name="credential_hint_private_key">私钥内容（PEM，OpenSSH/PKCS8）</string>
+    <string name="credential_hint_passphrase">私钥密码（如果有）</string>
+    <string name="credential_key_read_failed">读取「%1$s」失败，或文件过大</string>
+    <string name="credential_key_is_public">「%1$s」看起来是公钥，请选择对应的私钥文件</string>
+    <string name="credential_key_from_file">已从「%1$s」读入 · %2$s</string>
+    <string name="credential_key_from_clipboard">已从剪贴板读入 · %1$s</string>
+    <string name="credential_clipboard_empty">剪贴板里没有文本</string>
+    <string name="credential_key_missing">尚未填写私钥</string>
+    <string name="credential_key_not_pem">内容不像 PEM 私钥，仍可保存但可能无法登录</string>
+    <string name="credential_key_summary">%1$s · %2$d 字符</string>
+    <string name="credential_file_fallback_name">文件</string>
+    <string name="credential_error_username">请填写用户名</string>
+    <string name="credential_error_key">请选择私钥文件或粘贴私钥内容</string>
+    <string name="credential_delete_title">删除认证</string>
+    <string name="credential_delete_message">确定删除「%1$s」吗？</string>
+    <plurals name="credential_delete_in_use">
+        <item quantity="other">「%1$s」正被 %2$d 个连接使用，删除后这些连接需要重新选择认证。确定删除吗？</item>
+    </plurals>
+
+    <!-- ============================================================ tunnel editor -->
+    <string name="tunnel_edit_toolbar">隧道设置</string>
+    <string name="tunnel_edit_title_new">新建隧道</string>
+    <string name="tunnel_edit_title_edit">编辑隧道</string>
+    <string name="tunnel_edit_title_duplicate">复制隧道</string>
+    <string name="tunnel_edit_delete">删除此隧道</string>
+    <string name="tunnel_edit_duplicate">复制为新隧道</string>
+    <string name="tunnel_section_server">frps 服务器</string>
+    <string name="tunnel_hint_name">名称（留空则用 serverName）</string>
+    <string name="tunnel_hint_addr">frps 地址</string>
+    <string name="tunnel_hint_port">frps 端口（默认 7000）</string>
+    <string name="tunnel_hint_token">frps auth token（未启用则留空）</string>
+    <string name="tunnel_hint_server_name">serverName（与 stcp proxy 的 name 一致）</string>
+    <string name="tunnel_hint_secret_key">secretKey（与 stcp proxy 一致）</string>
+    <string name="tunnel_hint_bind_port">本地绑定端口（多个隧道不能重复）</string>
+    <string name="tunnel_action_save_and_start">保存并启动</string>
+    <string name="tunnel_error_fields">请填写完整的 frps 地址 / 端口 / serverName / secretKey / 本地端口</string>
+    <string name="tunnel_error_port_taken">本地端口 %1$d 已被另一条隧道占用，请换一个</string>
+    <string name="tunnel_delete_title">删除隧道</string>
+    <string name="tunnel_delete_message">确定删除「%1$s」吗？关联的连接会变成直连。</string>
+
+    <!-- ============================================================ terminal -->
+    <string name="terminal_menu_keyboard">显示键盘</string>
+    <string name="terminal_menu_reconnect">重新连接</string>
+    <string name="terminal_menu_disconnect">断开并返回</string>
+    <string name="terminal_no_connection">没有可用的连接配置</string>
+    <string name="terminal_no_credential">这个连接还没有选择认证，请先在连接设置里选一个</string>
+    <string name="terminal_status_tunnel_starting">正在启动隧道「%1$s」…</string>
+    <string name="terminal_status_tunnel_failed">隧道「%1$s」启动失败：%2$s，点击此处重试</string>
+    <string name="terminal_status_tunnel_timeout">隧道「%1$s」启动超时，点击此处重试</string>
+    <string name="terminal_status_connecting">连接中…</string>
+    <string name="terminal_status_disconnected">连接已断开，点击此处重试</string>
+    <string name="terminal_status_reconnecting">连接断开，%1$d 秒后重连（第 %2$d/%3$d 次）…</string>
+    <string name="terminal_host_key_mismatch">警告：%1$s:%2$d 的主机密钥与上次不一致，已拒绝连接</string>
+
+    <!-- ============================================================ settings -->
+    <string name="settings_subtitle">全局配置、环境自检和版本信息</string>
+
+    <string name="settings_section_check">环境检测</string>
+    <string name="settings_action_recheck">重新检测</string>
+    <string name="settings_check_running">检测中…</string>
+    <string name="settings_check_failed">检测失败：%1$s</string>
+    <string name="settings_check_summary_fail">%1$d 项失败、%2$d 项警告，共 %3$d 项</string>
+    <string name="settings_check_summary_warn">%1$d 项警告，其余正常（共 %2$d 项）</string>
+    <string name="settings_check_summary_ok">全部正常（共 %1$d 项）</string>
+    <string name="settings_open_system_failed">打不开系统设置页</string>
+
+    <string name="settings_section_global">全局配置</string>
+    <string name="settings_font_size">终端字体大小</string>
+    <string name="settings_font_size_value">%1$d sp，下次进入终端生效</string>
+    <string name="settings_keep_screen_on">终端保持屏幕常亮</string>
+    <string name="settings_keep_screen_on_detail">跑长任务时不会因为锁屏中断（会更耗电）</string>
+    <string name="settings_permission_prompt">启动时提示建议开启的权限</string>
+    <string name="settings_permission_prompt_detail">之前选过「不再提示」的话，打开这个可以恢复</string>
+    <string name="settings_language">语言</string>
+    <string name="settings_language_system">跟随系统</string>
+    <string name="settings_language_dialog_title">语言</string>
+    <string name="settings_language_change">更改</string>
+
+    <string name="settings_section_update">获取更新</string>
+    <string name="settings_action_check_update">检查更新</string>
+    <string name="settings_action_open_releases">打开发布页</string>
+    <string name="settings_update_token_hint">GitHub token（可选）</string>
+    <string name="settings_update_token_helper">仓库已是公开的，不填也能查询。只有撞上 GitHub 的匿名频率限制时才需要填，内容存在加密存储里。</string>
+    <string name="settings_update_current">当前版本 %1$s（versionCode %2$d）</string>
+    <string name="settings_update_querying">正在向 GitHub 查询…</string>
+    <string name="settings_update_up_to_date">已是最新（本地 %1$s，最新发布 %2$s）</string>
+    <string name="settings_update_failed">查询失败：%1$s</string>
+    <string name="settings_update_available">有新版本 %1$s（本地 %2$s）</string>
+    <string name="settings_update_dialog_title">发现新版本 %1$s</string>
+    <string name="settings_update_dialog_message">本地 %1$s → %2$s</string>
+    <string name="settings_update_dialog_footer">github.com 连不上时会自动改用 %1$s 加速下载。APK 用的是同一个签名 key，可以直接覆盖安装。</string>
+    <string name="settings_update_action_download">下载并安装</string>
+    <string name="settings_update_downloading">正在下载 %1$s… %2$d%%</string>
+    <string name="settings_update_downloading_mirror">正在通过加速地址下载 %1$s… %2$d%%</string>
+    <string name="settings_update_download_failed">下载失败：%1$s</string>
+    <string name="settings_update_downloaded">%1$s 下载完成，正在唤起安装</string>
+    <string name="settings_update_no_apk">这个 release 没有附带 APK，请改用「打开发布页」</string>
+    <string name="settings_update_install_permission">需要先允许本应用安装未知来源应用。授权后再点一次「下载并安装」。</string>
+    <string name="settings_update_install_failed">这台设备上没有能安装 APK 的组件</string>
+
+    <string name="update_error_http">GitHub 返回 HTTP %1$d</string>
+    <string name="update_error_not_found">找不到仓库或还没有 release（HTTP 404）</string>
+    <string name="update_error_rate_limited">GitHub 拒绝了请求（HTTP %1$d），多半是匿名频率限制。可以在下面填一个 token 再试。</string>
+    <string name="update_error_no_tag">返回里没有 tag_name</string>
+
+    <string name="settings_section_about">关于</string>
+    <string name="settings_action_open_repo">打开项目主页</string>
+    <string name="settings_about_version">版本 %1$s（versionCode %2$d）</string>
+    <string name="settings_about_package">包名 %1$s</string>
+    <string name="settings_about_device">设备 %1$s %2$s · Android %3$s (API %4$d)</string>
+    <string name="settings_about_abi">ABI %1$s</string>
+    <string name="settings_about_signature">签名 SHA-256 %1$s</string>
+    <string name="settings_about_signature_failed">读取失败</string>
+    <string name="settings_about_credits_terminal">终端引擎来自 Termux 的 terminal-view / terminal-emulator（Apache-2.0）</string>
+    <string name="settings_about_credits_tunnel">隧道使用内置 frpc（STCP visitor），SSH 基于 sshj + BouncyCastle</string>
+    <string name="settings_no_browser">没有可以打开链接的应用</string>
+
+    <string name="settings_section_help">帮助</string>
+    <string name="settings_help_setup">配置顺序：先建「认证」（用户名 + 密码或私钥），再建「隧道」（frpc STCP visitor），最后建「连接」把两者关联起来。选了隧道之后 Host/Port 由隧道的本地端口决定，不用手填。</string>
+    <string name="settings_help_tmux">tmux：在连接编辑页点「探测远端 session」可以列出远端已有的 session 直接选，也可以新建或不用。用 tmux 的话断线重连能无损续接，不用 tmux 断线就等于丢失当前 shell。</string>
+    <string name="settings_help_keys">终端按键行：ESC / CTRL / 方向键（长按连发）/ TAB / S-TAB / ^C / ^D / Home / End / PgUp / PgDn 等，可以左右滑动。CTRL 是粘滞的，点一下再按字母等于 Ctrl+字母。</string>
+    <string name="settings_help_troubleshoot">连不上时的排查顺序：先看上面的环境检测，再去「隧道」页看那条隧道的日志（frpc 的输出都在里面），最后确认远端 sshd 和端口是否可达。</string>
+
+    <!-- ============================================================ environment check -->
+    <string name="env_frpc_binary">frpc 二进制</string>
+    <string name="env_frpc_binary_missing">没找到 %1$s。这个包可能是在没有编译 frpc 的情况下构建的（见 scripts/build_frpc.sh），隧道无法使用。</string>
+    <string name="env_frpc_binary_not_executable">%1$s 存在但不可执行，隧道启动会直接失败。</string>
+    <string name="env_frpc_binary_ok">可执行，%1$d MB</string>
+    <string name="env_frpc_runs">frpc 可运行</string>
+    <string name="env_frpc_runs_skipped">跳过：二进制不可执行</string>
+    <string name="env_frpc_runs_timeout">执行 frpc -v 超时（5 秒），但二进制本身在</string>
+    <string name="env_frpc_runs_no_output">能启动，但没有输出版本号（退出码 %1$d）</string>
+    <string name="env_frpc_runs_ok">frpc %1$s</string>
+    <string name="env_frpc_runs_failed">无法执行：%1$s</string>
+    <string name="env_crypto">加密提供者</string>
+    <string name="env_crypto_missing">没有注册 BC 提供者，SSH 密钥交换可能失败。</string>
+    <string name="env_crypto_ok">BouncyCastle %1$s（已替换掉系统精简版）</string>
+    <string name="env_crypto_wrong">BC provider 是 %1$s，不是完整版 BouncyCastle，某些密钥类型可能不被支持。</string>
+    <string name="env_network">网络</string>
+    <string name="env_network_none">当前没有可用网络，隧道和 SSH 都连不上。</string>
+    <string name="env_network_no_internet">有网络但系统未标记为可上网。</string>
+    <string name="env_network_cellular">移动网络</string>
+    <string name="env_network_ethernet">以太网</string>
+    <string name="env_network_other">已连接</string>
+    <string name="env_network_unvalidated">%1$s（尚未验证连通性）</string>
+    <string name="env_notifications">通知权限</string>
+    <string name="env_notifications_not_needed">Android 12 及以下不需要单独授权</string>
+    <string name="env_notifications_ok">已授权，能看到隧道的常驻通知</string>
+    <string name="env_notifications_missing">未授权。隧道仍然会在后台运行，但看不到状态通知，也没法从通知栏点回隧道页面。</string>
+    <string name="env_battery">电池优化</string>
+    <string name="env_battery_ok">已豁免，后台不容易被杀</string>
+    <string name="env_battery_missing">未豁免。息屏或切到后台一段时间后系统可能杀掉 frpc 进程，隧道断开、终端掉线。</string>
+    <string name="env_config">配置</string>
+    <string name="env_config_summary">%1$d 个连接 · %2$d 份认证 · %3$d 条隧道</string>
+    <string name="env_config_empty">还没有任何配置。先建一份认证，再建连接。</string>
+    <plurals name="env_config_orphaned">
+        <item quantity="other">%1$s。其中 %2$d 个连接没有关联认证，进终端会被拒：%3$s</item>
+    </plurals>
+
+    <!-- ============================================================ startup permission prompt -->
+    <string name="startup_title">建议开启的权限</string>
+    <string name="startup_intro">下面这些都不是必须的，不开也能正常连接，只是可能会遇到这些问题：</string>
+    <string name="startup_item">\n· %1$s\n  %2$s\n</string>
+    <string name="startup_never">不再提示</string>
+    <string name="startup_grant">去开启</string>
+    <string name="startup_notifications">通知权限</string>
+    <string name="startup_notifications_detail">隧道在后台运行时会有一条常驻通知。不开的话看不到隧道有没有连上，也没法从通知栏点回隧道页面。</string>
+    <string name="startup_battery">忽略电池优化</string>
+    <string name="startup_battery_detail">不开的话，息屏或切到后台一段时间后系统可能会杀掉 frpc 进程，隧道断开、终端掉线（远端 tmux 会话还在，重连能续上）。</string>
+</resources>

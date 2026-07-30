@@ -13,8 +13,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         app:helperTextEnabled="true"
-        app:helperText="已存在同名 session 时会直接接入"
-        android:hint="session 名">
+        app:helperText="@string/tmux_new_dialog_helper"
+        android:hint="@string/tmux_new_dialog_hint">
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/editSessionName"
             android:layout_width="match_parent"

@@ -70,18 +70,20 @@ class ConnectionEditActivity : AppCompatActivity() {
         // adjust the name before it becomes a separate profile.
         val duplicateSource = intent.getStringExtra(EXTRA_DUPLICATE_FROM_ID)?.let { store.get(it) }
 
-        binding.toolbar.title = when {
-            existing != null -> "编辑连接"
-            duplicateSource != null -> "复制连接"
-            else -> "新建连接"
-        }
+        binding.toolbar.setTitle(
+            when {
+                existing != null -> R.string.connection_edit_title_edit
+                duplicateSource != null -> R.string.connection_edit_title_duplicate
+                else -> R.string.connection_edit_title_new
+            }
+        )
         binding.toolbar.menu.findItem(R.id.actionDelete)?.let {
             it.isVisible = existing != null
-            it.title = "删除此连接"
+            it.setTitle(R.string.connection_edit_delete)
         }
         binding.toolbar.menu.findItem(R.id.actionDuplicate)?.let {
             it.isVisible = existing != null
-            it.title = "复制为新连接"
+            it.setTitle(R.string.connection_edit_duplicate)
         }
         binding.toolbar.setNavigationOnClickListener { finish() }
         binding.toolbar.setOnMenuItemClickListener { item ->
@@ -105,7 +107,7 @@ class ConnectionEditActivity : AppCompatActivity() {
         binding.buttonEditCredential.setOnClickListener {
             val credential = selectedCredential()
             if (credential == null) {
-                showError("还没有选择认证")
+                showError(getString(R.string.connection_error_no_credential_selected))
                 return@setOnClickListener
             }
             editCredential.launch(
@@ -133,7 +135,7 @@ class ConnectionEditActivity : AppCompatActivity() {
             existing != null -> prefill(existing!!)
             duplicateSource != null -> {
                 prefill(duplicateSource)
-                binding.editName.setText("${duplicateSource.displayName} 副本")
+                binding.editName.setText(getString(R.string.copy_of, duplicateSource.displayName))
             }
             else -> prefillDefaults()
         }
@@ -152,7 +154,7 @@ class ConnectionEditActivity : AppCompatActivity() {
     /** Lets the user bind this connection to a tunnel; see [applyTunnelSelection] for what that implies. */
     private fun setUpTunnelDropdown() {
         tunnels = FrpcConfigStore(applicationContext).list()
-        val labels = listOf(NO_TUNNEL_LABEL) + tunnels.map { it.displayName }
+        val labels = listOf(noTunnelLabel()) + tunnels.map { it.displayName }
         binding.dropdownTunnel.setSimpleItems(labels.toTypedArray())
         binding.dropdownTunnel.setOnItemClickListener { _, _, position, _ ->
             applyTunnelSelection(tunnels.getOrNull(position - 1))
@@ -166,14 +168,17 @@ class ConnectionEditActivity : AppCompatActivity() {
      */
     private fun applyTunnelSelection(tunnel: FrpcConfig?) {
         selectedTunnelId = tunnel?.id
-        binding.dropdownTunnel.setText(tunnel?.displayName ?: NO_TUNNEL_LABEL, false)
+        binding.dropdownTunnel.setText(tunnel?.displayName ?: noTunnelLabel(), false)
         binding.groupDirectTarget.visibility = if (tunnel == null) View.VISIBLE else View.GONE
         binding.textTunnelTarget.visibility = if (tunnel == null) View.GONE else View.VISIBLE
         if (tunnel != null) {
-            binding.textTunnelTarget.text =
-                "SSH 目标由隧道决定：$LOOPBACK_HOST:${tunnel.bindPort}（「${tunnel.displayName}」的本地端口）"
+            binding.textTunnelTarget.text = getString(
+                R.string.connection_tunnel_target, LOOPBACK_HOST, tunnel.bindPort, tunnel.displayName
+            )
         }
     }
+
+    private fun noTunnelLabel(): String = getString(R.string.connection_no_tunnel)
 
     /** Resolves the tunnel this profile goes through, or null when it is direct (or the tunnel is gone). */
     private fun selectedTunnel(): FrpcConfig? = tunnels.firstOrNull { it.id == selectedTunnelId }
@@ -202,8 +207,8 @@ class ConnectionEditActivity : AppCompatActivity() {
         binding.buttonEditCredential.isEnabled = credential != null
         binding.textCredentialDetail.text = when {
             credential != null -> credential.subtitle
-            credentials.isEmpty() -> "还没有任何认证，点「新建认证」添加用户名 + 密码或私钥"
-            else -> "请选择一个认证"
+            credentials.isEmpty() -> getString(R.string.connection_credential_none)
+            else -> getString(R.string.connection_credential_pick)
         }
     }
 
@@ -241,11 +246,11 @@ class ConnectionEditActivity : AppCompatActivity() {
 
         val credential = selectedCredential()
         if (credential == null) {
-            showError("请选择一个认证（没有的话点「新建认证」）")
+            showError(getString(R.string.connection_error_pick_credential))
             return null
         }
         if (host.isEmpty() || port == null) {
-            showError("请填写 Host / Port")
+            showError(getString(R.string.connection_error_host_port))
             return null
         }
 
@@ -278,14 +283,14 @@ class ConnectionEditActivity : AppCompatActivity() {
 
         probing = true
         binding.buttonProbeTmux.isEnabled = false
-        binding.layoutTmuxSession.helperText = "正在连接远端，读取 tmux session…"
+        binding.layoutTmuxSession.helperText = getString(R.string.tmux_probing)
 
         val verifier = TofuHostKeyVerifier(TofuHostKeyStore(applicationContext)).apply {
             onMismatch = { host, port ->
                 runOnUiThread {
                     Toast.makeText(
                         this@ConnectionEditActivity,
-                        "警告：$host:$port 的主机密钥与上次不一致，已拒绝连接",
+                        getString(R.string.terminal_host_key_mismatch, host, port),
                         Toast.LENGTH_LONG
                     ).show()
                 }
@@ -297,7 +302,7 @@ class ConnectionEditActivity : AppCompatActivity() {
             val result = if (tunnelError != null) {
                 Result.failure(IOException(tunnelError))
             } else {
-                runCatching { TmuxSessionProbe.list(config, verifier) }
+                runCatching { TmuxSessionProbe.list(applicationContext, config, verifier) }
             }
 
             runOnUiThread {
@@ -306,19 +311,22 @@ class ConnectionEditActivity : AppCompatActivity() {
                 binding.buttonProbeTmux.isEnabled = true
                 result
                     .onSuccess { sessions ->
-                        binding.layoutTmuxSession.helperText = TMUX_HELPER_TEXT
+                        binding.layoutTmuxSession.helperText =
+                            getString(R.string.connection_helper_tmux)
                         showTmuxSessionPicker(sessions)
                     }
                     .onFailure { error ->
-                        binding.layoutTmuxSession.helperText =
-                            "探测失败：${error.message ?: error::class.java.simpleName}"
+                        binding.layoutTmuxSession.helperText = getString(
+                            R.string.tmux_probe_failed,
+                            error.message ?: error::class.java.simpleName
+                        )
                     }
             }
         }
     }
 
     /**
-     * Bottom sheet with one card per remote session (name, window count, an "已连接" badge), plus the two
+     * Bottom sheet with one card per remote session (name, window count, an "attached" badge), plus the two
      * escape hatches: name a new session, or skip tmux entirely.
      */
     private fun showTmuxSessionPicker(sessions: List<TmuxSession>) {
@@ -326,22 +334,28 @@ class ConnectionEditActivity : AppCompatActivity() {
         val sheetBinding = DialogTmuxSessionsBinding.inflate(layoutInflater)
         sheet.setContentView(sheetBinding.root)
 
-        sheetBinding.textTitle.text =
-            if (sessions.isEmpty()) "远端还没有 tmux session" else "选择 tmux session"
+        sheetBinding.textTitle.setText(
+            if (sessions.isEmpty()) R.string.tmux_picker_title_empty else R.string.tmux_picker_title
+        )
         sheetBinding.textSubtitle.text = if (sessions.isEmpty()) {
-            "可以新建一个，或者这次只开普通 shell"
+            getString(R.string.tmux_picker_subtitle_empty)
         } else {
-            "${probeTargetLabel()} 上共 ${sessions.size} 个 session"
+            resources.getQuantityString(
+                R.plurals.tmux_picker_subtitle, sessions.size, probeTargetLabel(), sessions.size
+            )
         }
 
         sessions.forEach { session ->
             val row = ItemTmuxSessionBinding.inflate(layoutInflater, sheetBinding.containerSessions, false)
             row.textName.text = session.name
-            row.textMeta.text = "${session.windows} 个窗口"
+            row.textMeta.text = windowCount(session)
             row.textBadge.visibility = if (session.attached) View.VISIBLE else View.GONE
-            row.textBadge.text = "已连接"
+            row.textBadge.setText(R.string.tmux_attached)
             row.root.setOnClickListener {
-                selectTmuxSession(session.name, "接入已有 session · ${session.summary}")
+                selectTmuxSession(
+                    session.name,
+                    getString(R.string.tmux_helper_attach, sessionSummary(session))
+                )
                 sheet.dismiss()
             }
             sheetBinding.containerSessions.addView(row.root)
@@ -352,7 +366,7 @@ class ConnectionEditActivity : AppCompatActivity() {
             promptNewSessionName()
         }
         sheetBinding.buttonNoSession.setOnClickListener {
-            selectTmuxSession("", "不使用 tmux，只开普通 shell")
+            selectTmuxSession("", getString(R.string.tmux_action_no_session))
             sheet.dismiss()
         }
         sheet.show()
@@ -366,18 +380,32 @@ class ConnectionEditActivity : AppCompatActivity() {
         dialogBinding.editSessionName.setSelection(dialogBinding.editSessionName.text?.length ?: 0)
 
         MaterialAlertDialogBuilder(this)
-            .setTitle("新建 tmux session")
+            .setTitle(R.string.tmux_new_dialog_title)
             .setView(dialogBinding.root)
-            .setNegativeButton("取消", null)
-            .setPositiveButton("使用") { _, _ ->
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(R.string.action_use) { _, _ ->
                 val name = dialogBinding.editSessionName.text?.toString()?.trim().orEmpty()
                 selectTmuxSession(
                     name,
-                    if (name.isEmpty()) "不使用 tmux，只开普通 shell" else "连接时新建 session「$name」"
+                    if (name.isEmpty()) getString(R.string.tmux_action_no_session)
+                    else getString(R.string.tmux_helper_new, name)
                 )
             }
             .show()
     }
+
+    /** "3 windows", plus whether someone is already attached. */
+    private fun sessionSummary(session: TmuxSession): String {
+        val windows = windowCount(session)
+        return if (session.attached) {
+            getString(R.string.tmux_summary, windows, getString(R.string.tmux_has_client))
+        } else {
+            windows
+        }
+    }
+
+    private fun windowCount(session: TmuxSession): String =
+        resources.getQuantityString(R.plurals.tmux_windows, session.windows, session.windows)
 
     private fun selectTmuxSession(name: String, helperText: String) {
         binding.editTmuxSession.setText(name)
@@ -393,10 +421,10 @@ class ConnectionEditActivity : AppCompatActivity() {
     private fun confirmDelete() {
         val target = existing ?: return
         MaterialAlertDialogBuilder(this)
-            .setTitle("删除连接")
-            .setMessage("确定删除「${target.displayName}」吗？")
-            .setNegativeButton("取消", null)
-            .setPositiveButton("删除") { _, _ ->
+            .setTitle(R.string.connection_delete_title)
+            .setMessage(getString(R.string.connection_delete_message, target.displayName))
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(R.string.action_delete) { _, _ ->
                 store.delete(target.id)
                 finish()
             }
@@ -411,9 +439,7 @@ class ConnectionEditActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_CONNECTION_ID = "connection_id"
         const val EXTRA_DUPLICATE_FROM_ID = "duplicate_from_id"
-        private const val NO_TUNNEL_LABEL = "不使用隧道（直连）"
         private const val LOOPBACK_HOST = "127.0.0.1"
         private const val DEFAULT_SESSION_NAME = "main"
-        private const val TMUX_HELPER_TEXT = "留空则只开普通 shell"
     }
 }

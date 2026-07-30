@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.devhc.aidevmob.R
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -12,6 +13,8 @@ import org.json.JSONObject
  * key - same shape as [ConnectionStore], which now only references them by id.
  */
 class CredentialStore(context: Context) {
+
+    private val appContext = context.applicationContext
 
     private val prefs: SharedPreferences = run {
         val masterKey = MasterKey.Builder(context)
@@ -89,7 +92,7 @@ class CredentialStore(context: Context) {
     }
 
     private fun uniqueName(username: String, taken: Set<String>): String {
-        val base = username.ifBlank { "认证" }
+        val base = username.ifBlank { appContext.getString(R.string.credential_default_name) }
         if (base !in taken) return base
         var suffix = 2
         while ("$base #$suffix" in taken) suffix += 1

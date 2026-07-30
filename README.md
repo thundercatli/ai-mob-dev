@@ -1,52 +1,82 @@
 # ai-mob-dev
 
-从手机操作电脑上 tmux 会话的 Android 客户端：内置 frpc（STCP visitor）打通网络，再通过 SSH 连接到远端 shell / tmux，用 Termux 的终端引擎渲染。
+**English** · [简体中文](README.zh-CN.md)
 
-## 功能
+An Android client for driving the tmux session on your computer from your phone: a bundled frpc (STCP visitor) opens the path through the network, SSH connects to the remote shell / tmux, and Termux's terminal engine renders it.
 
-- **连接管理**：多个 SSH 连接配置，支持命名、复制、删除。列表里每条连接上方标出所走的隧道名（以及是否在运行），编辑页可以直接探测远端已有的 tmux session 来选，也可以新建一个或不用 tmux。选了隧道后 Host/Port 由隧道的本地端口决定，不用手填
-- **认证管理**：用户名 + 密码/私钥单独存成「认证」，多个连接复用同一份；私钥可以从手机本地文件选（SAF）或从剪贴板粘贴。全部存在 EncryptedSharedPreferences 里。老版本里写在连接上的凭据会在首次启动时自动抽成认证条目
-- **隧道管理**：多条 frpc STCP 隧道，各自独立进程、独立本地端口，可单独启停并查看日志
-- **自动打隧道**：连接可关联某条隧道，进入终端时若隧道未启动会自动拉起并等待就绪
-- **终端**：VT100 全功能终端（基于 Termux 的 terminal-view / terminal-emulator），附加功能键行（方向键 ←↓↑→ 长按连发，编码跟随程序的 application cursor 模式，vim / less 里也能用）、断线自动重连（配合 tmux 可无损续接）
-- **设置**：环境自检（frpc 是否可执行并真的跑一次拿版本、BouncyCastle 是否替换成功、网络、权限、以及有没有连接漏配认证）、全局配置（终端字号、屏幕常亮、启动权限提示）、版本与签名指纹、检查更新（私有仓库需填 GitHub token，否则只能打开发布页）、帮助
+## Features
 
-## 构建
+- **Connections** — any number of SSH profiles, each nameable, duplicable and deletable. Every row is labelled with the tunnel it goes through (and whether that tunnel is up); the editor can probe the remote host for existing tmux sessions to pick from, create a new one, or skip tmux. Picking a tunnel derives Host/Port from its local port, so there is nothing to type
+- **Credentials** — a username plus a password or private key is stored once as a "credential" and shared by any number of connections. Keys can be picked from local storage (SAF) or pasted from the clipboard. Everything lives in EncryptedSharedPreferences. Secrets stored inline on connections by older versions are lifted into credential entries on first launch
+- **Tunnels** — several frpc STCP tunnels, each with its own process and local port, started and stopped individually, with its log viewable in-app
+- **Automatic tunnelling** — a connection can be bound to a tunnel; opening its terminal starts that tunnel if needed and waits for it to come up
+- **Terminal** — a full VT100 terminal (Termux's terminal-view / terminal-emulator) plus an extra key row (arrows ←↓↑→ repeat when held, and their encoding follows the foreground program's application-cursor mode, so they work inside vim / less), with automatic reconnection that resumes losslessly when tmux is in play
+- **Languages** — English and 简体中文, following the system by default and switchable in settings (on Android 13+ it also plugs into the system's per-app language setting)
+- **Settings** — self-diagnostics (is frpc executable, and does actually running it report a version; did BouncyCastle get swapped in; network, permissions, and any connection missing its credential), global options (terminal font size, keep screen on, startup permission prompt, language), version and signing fingerprint, in-app update check and install, and help
 
-需要 JDK 17、Android SDK、Android NDK、Go。
+## In-app updates
 
-`app/src/main/jniLibs/arm64-v8a/libfrpc.so` **不在版本库里**，首次构建前需要生成：
+"Updates" in the settings tab asks GitHub for the latest release. When there is a newer one, the APK can be downloaded and handed to the system installer without leaving the app — it installs over the running build, since every release is signed with the same key.
+
+The repository is public, so **no token is required**. One is only needed if you hit GitHub's anonymous rate limit (60 requests per hour per IP).
+
+Because github.com is unreachable on some networks, both the API query and the download try the direct route first and automatically fall back to the `p.all3n.top` path-prefix proxy:
+
+```
+https://github.com/all3n/ai-mob-dev/releases/download/v0.2.3/ai-mob-dev-v0.2.3.apk
+        ↓ if the direct download fails
+https://p.all3n.top/github.com/all3n/ai-mob-dev/releases/download/v0.2.3/ai-mob-dev-v0.2.3.apk
+```
+
+Only transport-level failures fall through (unreachable, timed out, 5xx, or a response that isn't an APK). A definitive answer from GitHub — 404, rate limit — is not retried, because the other route would give the same one. Downloads are checked for a real zip/APK header, so a proxy's HTML error page is never handed to the installer.
+
+## Building
+
+Requires JDK 17, the Android SDK, the Android NDK and Go.
+
+`app/src/main/jniLibs/arm64-v8a/libfrpc.so` is **not in the repository** and has to be produced before the first build:
 
 ```bash
-./scripts/build_frpc.sh          # 默认构建 frp v0.70.1
+./scripts/build_frpc.sh          # builds frp v0.70.1 by default
 ./scripts/build_frpc.sh --version v0.71.0
 ./gradlew assembleDebug
 ```
 
-脚本会克隆 frp 源码（或用 `FRP_ROOT` 指向已有的 checkout），然后用 NDK 的 clang 以 `GOOS=android CGO_ENABLED=1` 交叉编译。
+The script clones the frp source (or uses an existing checkout via `FRP_ROOT`) and cross-compiles it with the NDK's clang under `GOOS=android CGO_ENABLED=1`.
 
-**为什么必须自己编译**：frp 官方 release 里的 `linux_arm64` 和 `android_arm64` 两个包都是纯 Go 静态编译（`CGO_ENABLED=0`），不链接 Bionic，因此不走 Android 自己的网络/解析实现。必须用 NDK 工具链开 cgo 重新编译。
+**Why it must be compiled here**: frp's official `linux_arm64` and `android_arm64` release archives are both pure static Go builds (`CGO_ENABLED=0`). They do not link against Bionic, so they never use Android's own networking and resolver. Rebuilding with the NDK toolchain and cgo enabled is the only way to get those.
 
-**为什么叫 `.so`**：Android 10+ 不允许执行应用私有目录下的文件，但作为 native library 打包的文件会在安装时被解压到 `nativeLibraryDir` 并带上可执行权限。配合 `app/build.gradle.kts` 里的 `packaging.jniLibs.useLegacyPackaging = true`（强制 `extractNativeLibs=true`），`ProcessBuilder` 才能真正 exec 它。
+**Why the `.so` name**: Android 10+ refuses to execute files in an app's private directory, but anything packaged as a native library is extracted to `nativeLibraryDir` at install time with the execute bit set. Together with `packaging.jniLibs.useLegacyPackaging = true` in `app/build.gradle.kts` (which forces `extractNativeLibs=true`), that is what lets `ProcessBuilder` actually exec it.
 
-目前只打 `arm64-v8a`，所以在常见的 x86_64 模拟器上隧道功能无法使用。
+Only `arm64-v8a` is built, so tunnelling does not work on the usual x86_64 emulator.
 
-## CI 与发布
+## Translations
 
-`.github/workflows/android.yml` 在 push / PR 时自动构建 frpc 和 release APK，产物作为 artifact `app-release` 上传。也可以在 Actions 页面手动触发（`workflow_dispatch`），可指定 frp 版本号。
+No UI text is hardcoded; it all lives in resources:
 
-打 `v*` 开头的 tag 会额外创建 GitHub Release 并把 APK 附在上面，方便直接下载：
+- `app/src/main/res/values/strings.xml` — English, the default
+- `app/src/main/res/values-zh/strings.xml` — Chinese
+
+To add a language: add `values-<code>/strings.xml`, list the locale in `app/src/main/res/xml/locales_config.xml`, and add the same BCP 47 tag to `SettingsFragment.SUPPORTED_LANGUAGES` (which drives the in-app picker — the only entry point below Android 13).
+
+## CI and releases
+
+`.github/workflows/android.yml` builds frpc and a release APK on every push / PR, uploading the result as the `app-release` artifact. It can also be triggered by hand from the Actions page (`workflow_dispatch`), optionally with a specific frp version.
+
+Pushing a tag starting with `v` additionally creates a GitHub Release with the APK attached, ready to download:
 
 ```bash
 git tag v0.1.0
 git push origin v0.1.0
 ```
 
-tag 构建会把版本号对齐到 tag（`v0.1.0` → versionName `0.1.0`，versionCode 取 CI run number 以保证递增）。
+A tag build aligns the version with the tag (`v0.1.0` → versionName `0.1.0`; versionCode comes from the CI run number so it always increases).
 
-签名是可选的：配置 `STORE_FILE_BASE64`、`STORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD` 四个 repository secret 即用自己的密钥签名，否则回退到 Android 调试密钥（可安装，但不适合分发）。`STORE_FILE_BASE64` 用 `base64 -i release.jks` 生成。
+Signing is optional: set the `STORE_FILE_BASE64`, `STORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD` repository secrets to sign with your own key, otherwise the build falls back to the Android debug key (installable, but not fit for distribution). Produce `STORE_FILE_BASE64` with `base64 -i release.jks`.
 
-## 第三方代码
+Since in-app updates install over the existing app, every release has to be signed with the **same** key or the install is rejected.
 
-- `app/src/main/java/com/termux/**` — 来自 [termux/termux-app](https://github.com/termux/termux-app) 的 terminal-view / terminal-emulator 模块（Apache-2.0）。其中 `TerminalSession.java` 被改写：原版把终端绑定到本地 JNI pty 子进程，这里替换成注入的输入/输出流，以便由 SSH 通道驱动；其余 VT100 解析与渲染代码未改动。
-- frpc 来自 [fatedier/frp](https://github.com/fatedier/frp)（Apache-2.0），license 随包放在 `app/src/main/assets/licenses/`。
+## Third-party code
+
+- `app/src/main/java/com/termux/**` — the terminal-view / terminal-emulator modules from [termux/termux-app](https://github.com/termux/termux-app) (Apache-2.0). `TerminalSession.java` is modified: upstream binds the terminal to a local JNI pty subprocess, here that is replaced with injected input/output streams so an SSH channel can drive it. The VT100 parsing and rendering code is untouched.
+- frpc comes from [fatedier/frp](https://github.com/fatedier/frp) (Apache-2.0); its license ships in `app/src/main/assets/licenses/`.

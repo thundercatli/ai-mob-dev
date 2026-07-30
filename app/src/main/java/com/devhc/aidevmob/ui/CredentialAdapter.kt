@@ -4,6 +4,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
+import com.devhc.aidevmob.R
 import com.devhc.aidevmob.databinding.ItemCredentialBinding
 import com.devhc.aidevmob.ssh.Credential
 
@@ -38,9 +39,12 @@ class CredentialAdapter(
         fun bind(row: Row) {
             binding.textName.text = row.credential.displayName
             binding.textSubtitle.text = row.credential.subtitle
+            val context = binding.root.context
             binding.textUsage.text = when (row.usedByCount) {
-                0 -> "暂未被连接使用"
-                else -> "被 ${row.usedByCount} 个连接使用"
+                0 -> context.getString(R.string.credential_unused)
+                else -> context.resources.getQuantityString(
+                    R.plurals.credential_used_by, row.usedByCount, row.usedByCount
+                )
             }
             binding.textUsage.visibility = View.VISIBLE
             binding.root.setOnClickListener { onEdit(row.credential) }

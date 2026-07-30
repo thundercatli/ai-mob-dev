@@ -11,9 +11,9 @@
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
         app:navigationIcon="@drawable/ic_arrow_back"
-        app:navigationContentDescription="返回"
+        app:navigationContentDescription="@string/action_back"
         app:navigationIconTint="?attr/colorOnSurface"
-        app:title="隧道设置"
+        app:title="@string/tunnel_edit_toolbar"
         app:menu="@menu/connection_edit_menu" />
 
     <ScrollView
@@ -46,7 +46,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="frps 服务器"
+                        android:text="@string/tunnel_section_server"
                         android:textAppearance="?attr/textAppearanceTitleSmall"
                         android:textColor="?attr/colorOnSurfaceVariant"
                         android:layout_marginBottom="8dp" />
@@ -55,7 +55,7 @@
                         style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:hint="名称（留空则用 serverName）">
+                        android:hint="@string/tunnel_hint_name">
                         <com.google.android.material.textfield.TextInputEditText
                             android:id="@+id/editName"
                             android:layout_width="match_parent"
@@ -69,7 +69,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="10dp"
-                        android:hint="frps 地址">
+                        android:hint="@string/tunnel_hint_addr">
                         <com.google.android.material.textfield.TextInputEditText
                             android:id="@+id/editServerAddr"
                             android:layout_width="match_parent"
@@ -83,7 +83,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="10dp"
-                        android:hint="frps 端口（默认 7000）">
+                        android:hint="@string/tunnel_hint_port">
                         <com.google.android.material.textfield.TextInputEditText
                             android:id="@+id/editServerPort"
                             android:layout_width="match_parent"
@@ -99,7 +99,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="10dp"
                         app:passwordToggleEnabled="true"
-                        android:hint="frps auth token（未启用则留空）">
+                        android:hint="@string/tunnel_hint_token">
                         <com.google.android.material.textfield.TextInputEditText
                             android:id="@+id/editAuthToken"
                             android:layout_width="match_parent"
@@ -136,7 +136,7 @@
                         style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:hint="serverName（与 stcp proxy 的 name 一致）">
+                        android:hint="@string/tunnel_hint_server_name">
                         <com.google.android.material.textfield.TextInputEditText
                             android:id="@+id/editServerName"
                             android:layout_width="match_parent"
@@ -151,7 +151,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="10dp"
                         app:passwordToggleEnabled="true"
-                        android:hint="secretKey（与 stcp proxy 一致）">
+                        android:hint="@string/tunnel_hint_secret_key">
                         <com.google.android.material.textfield.TextInputEditText
                             android:id="@+id/editSecretKey"
                             android:layout_width="match_parent"
@@ -165,7 +165,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="10dp"
-                        android:hint="本地绑定端口（多个隧道不能重复）">
+                        android:hint="@string/tunnel_hint_bind_port">
                         <com.google.android.material.textfield.TextInputEditText
                             android:id="@+id/editBindPort"
                             android:layout_width="match_parent"
@@ -191,7 +191,7 @@
                 android:layout_height="56dp"
                 android:layout_marginTop="16dp"
                 app:cornerRadius="16dp"
-                android:text="保存并启动" />
+                android:text="@string/tunnel_action_save_and_start" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/buttonSave"
@@ -200,7 +200,7 @@
                 android:layout_height="52dp"
                 android:layout_marginTop="10dp"
                 app:cornerRadius="16dp"
-                android:text="只保存" />
+                android:text="@string/action_save_only" />
 
         </LinearLayout>
     </ScrollView>

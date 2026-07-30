@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.devhc.aidevmob.R
 import com.devhc.aidevmob.ui.MainActivity
 import java.io.BufferedReader
 import java.io.File
@@ -77,7 +78,10 @@ class FrpcVisitorService : Service() {
         val configFile = writeConfigFile(config)
         val binaryPath = File(applicationInfo.nativeLibraryDir, "libfrpc.so")
         if (!binaryPath.canExecute()) {
-            FrpcRuntime.update(config.id, FrpcRuntime.State.ERROR, error = "frpc 二进制不可执行: $binaryPath")
+            FrpcRuntime.update(
+                config.id, FrpcRuntime.State.ERROR,
+                error = getString(R.string.tunnel_error_not_executable, binaryPath.toString())
+            )
             updateNotification()
             return
         }
@@ -129,7 +133,7 @@ class FrpcVisitorService : Service() {
         if (tunnel.restartAttempts >= MAX_RESTART_ATTEMPTS) {
             FrpcRuntime.update(
                 config.id, FrpcRuntime.State.ERROR,
-                error = "退出码 $exitCode，已重试 ${tunnel.restartAttempts} 次，停止重试"
+                error = getString(R.string.tunnel_error_gave_up, exitCode, tunnel.restartAttempts)
             )
             updateNotification()
             return
@@ -185,12 +189,13 @@ class FrpcVisitorService : Service() {
     private fun buildNotification(): android.app.Notification {
         val running = tunnels.values.count { FrpcRuntime.isRunning(it.config.id) }
         val text = when {
-            tunnels.isEmpty() -> "没有运行中的隧道"
-            running == tunnels.size -> "已连接 $running 条隧道"
-            else -> "$running/${tunnels.size} 条隧道已连接"
+            tunnels.isEmpty() -> getString(R.string.tunnel_notification_none)
+            running == tunnels.size ->
+                resources.getQuantityString(R.plurals.tunnel_notification_all_up, running, running)
+            else -> getString(R.string.tunnel_notification_partial, running, tunnels.size)
         }
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("frpc STCP 隧道")
+            .setContentTitle(getString(R.string.tunnel_notification_title))
             .setContentText(text)
             .setSmallIcon(android.R.drawable.stat_sys_upload)
             .setOngoing(true)
@@ -227,7 +232,11 @@ class FrpcVisitorService : Service() {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             if (manager.getNotificationChannel(CHANNEL_ID) != null) return
             manager.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "frpc 隧道状态", NotificationManager.IMPORTANCE_LOW)
+                NotificationChannel(
+                    CHANNEL_ID,
+                    context.getString(R.string.tunnel_notification_channel),
+                    NotificationManager.IMPORTANCE_LOW
+                )
             )
         }
 

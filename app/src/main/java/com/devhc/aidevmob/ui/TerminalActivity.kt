@@ -58,14 +58,14 @@ class TerminalActivity : AppCompatActivity() {
         val requestedId = intent.getStringExtra(EXTRA_CONNECTION_ID)
         val loadedConfig = requestedId?.let { store.get(it) } ?: store.activeProfile()
         if (loadedConfig == null) {
-            Toast.makeText(this, "没有可用的连接配置", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, R.string.terminal_no_connection, Toast.LENGTH_LONG).show()
             finish()
             return
         }
         // Fold in the referenced credential so the SSH layer sees a self-contained profile.
         config = CredentialStore(applicationContext).resolve(loadedConfig)
         if (config.username.isBlank()) {
-            Toast.makeText(this, "这个连接还没有选择认证，请先在连接设置里选一个", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, R.string.terminal_no_credential, Toast.LENGTH_LONG).show()
             finish()
             return
         }
@@ -99,7 +99,7 @@ class TerminalActivity : AppCompatActivity() {
                 runOnUiThread {
                     Toast.makeText(
                         this@TerminalActivity,
-                        "警告：$host:$port 的主机密钥与上次不一致，已拒绝连接",
+                        getString(R.string.terminal_host_key_mismatch, host, port),
                         Toast.LENGTH_LONG
                     ).show()
                 }
@@ -130,7 +130,7 @@ class TerminalActivity : AppCompatActivity() {
             return
         }
 
-        showStatus("正在启动隧道「${tunnel.displayName}」…")
+        showStatus(getString(R.string.terminal_status_tunnel_starting, tunnel.displayName))
         FrpcVisitorService.start(applicationContext, tunnelId)
         waitForTunnel(tunnelId, tunnel.displayName)
     }
@@ -146,10 +146,15 @@ class TerminalActivity : AppCompatActivity() {
                 val status = FrpcRuntime.statusOf(tunnelId)
                 when {
                     status.state == FrpcRuntime.State.RUNNING -> connectSsh()
-                    status.state == FrpcRuntime.State.ERROR ->
-                        showStatus("隧道「$tunnelName」启动失败：${status.lastError ?: "未知错误"}，点击此处重试")
+                    status.state == FrpcRuntime.State.ERROR -> showStatus(
+                        getString(
+                            R.string.terminal_status_tunnel_failed,
+                            tunnelName,
+                            status.lastError ?: getString(R.string.error_unknown)
+                        )
+                    )
                     System.currentTimeMillis() > deadline ->
-                        showStatus("隧道「$tunnelName」启动超时，点击此处重试")
+                        showStatus(getString(R.string.terminal_status_tunnel_timeout, tunnelName))
                     else -> mainHandler.postDelayed(this, TUNNEL_POLL_INTERVAL_MS)
                 }
             }
@@ -190,7 +195,7 @@ class TerminalActivity : AppCompatActivity() {
      *  connect and every auto-reconnect attempt - if [ConnectionConfig.tmuxSession] is set, the
      *  remote `tmux new-session -A` makes this transparent since the shell's state lives in tmux. */
     private fun connectSsh() {
-        showStatus("连接中…")
+        showStatus(getString(R.string.terminal_status_connecting))
         val attemptId = ++connectionSeq
         val sshConnector = SshTerminalConnector(config, verifier)
         connector = sshConnector
@@ -217,12 +222,19 @@ class TerminalActivity : AppCompatActivity() {
         reconnectAttempts += 1
 
         if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
-            showStatus("连接已断开，点击此处重试")
+            showStatus(getString(R.string.terminal_status_disconnected))
             return
         }
 
         val delayMs = (1000L shl (reconnectAttempts - 1)).coerceAtMost(16000L)
-        showStatus("连接断开，${delayMs / 1000}秒后重连（第 $reconnectAttempts/$MAX_RECONNECT_ATTEMPTS 次）…")
+        showStatus(
+            getString(
+                R.string.terminal_status_reconnecting,
+                (delayMs / 1000).toInt(),
+                reconnectAttempts,
+                MAX_RECONNECT_ATTEMPTS
+            )
+        )
         mainHandler.postDelayed({ if (!destroyed) connectSsh() }, delayMs)
     }
 

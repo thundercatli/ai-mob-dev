@@ -10,7 +10,9 @@ import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
+import com.devhc.aidevmob.R
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 /**
@@ -23,15 +25,12 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 class StartupPermissionCheck(private val activity: AppCompatActivity) {
 
     /** Something the app would like to have, plus what the user loses by not granting it. */
-    private enum class Advice(val title: String, val consequence: String) {
-        NOTIFICATIONS(
-            "通知权限",
-            "隧道在后台运行时会有一条常驻通知。不开的话看不到隧道有没有连上，也没法从通知栏点回隧道页面。"
-        ),
-        BATTERY(
-            "忽略电池优化",
-            "不开的话，息屏或切到后台一段时间后系统可能会杀掉 frpc 进程，隧道断开、终端掉线（远端 tmux 会话还在，重连能续上）。"
-        );
+    private enum class Advice(
+        @param:StringRes val title: Int,
+        @param:StringRes val consequence: Int
+    ) {
+        NOTIFICATIONS(R.string.startup_notifications, R.string.startup_notifications_detail),
+        BATTERY(R.string.startup_battery, R.string.startup_battery_detail);
 
         fun isSatisfied(context: Context): Boolean = when (this) {
             NOTIFICATIONS -> Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
@@ -57,7 +56,7 @@ class StartupPermissionCheck(private val activity: AppCompatActivity) {
     ) { granted ->
         // Android stops showing the permission dialog after the user has denied it twice, at which
         // point the launcher returns "denied" without asking anything. Hand off to the settings
-        // screen so tapping "去开启" is never a no-op.
+        // screen so tapping "Grant" is never a no-op.
         val permanentlyDenied = !granted &&
             !activity.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
         if (permanentlyDenied) {
@@ -87,18 +86,26 @@ class StartupPermissionCheck(private val activity: AppCompatActivity) {
         if (missing.isEmpty()) return
 
         MaterialAlertDialogBuilder(activity)
-            .setTitle("建议开启的权限")
+            .setTitle(R.string.startup_title)
             .setMessage(
                 buildString {
-                    append("下面这些都不是必须的，不开也能正常连接，只是可能会遇到这些问题：\n")
-                    missing.forEach { append("\n· ${it.title}\n  ${it.consequence}\n") }
+                    append(activity.getString(R.string.startup_intro))
+                    missing.forEach {
+                        append(
+                            activity.getString(
+                                R.string.startup_item,
+                                activity.getString(it.title),
+                                activity.getString(it.consequence)
+                            )
+                        )
+                    }
                 }
             )
-            .setNeutralButton("不再提示") { _, _ ->
+            .setNeutralButton(R.string.startup_never) { _, _ ->
                 prefs.edit().putBoolean(KEY_OPTED_OUT, true).apply()
             }
-            .setNegativeButton("以后再说", null)
-            .setPositiveButton("去开启") { _, _ ->
+            .setNegativeButton(R.string.action_later, null)
+            .setPositiveButton(R.string.startup_grant) { _, _ ->
                 pending.clear()
                 pending.addAll(missing)
                 askNext()

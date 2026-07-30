@@ -38,18 +38,20 @@ class TunnelEditActivity : AppCompatActivity() {
         existing = intent.getStringExtra(EXTRA_TUNNEL_ID)?.let { store.get(it) }
         val duplicateSource = intent.getStringExtra(EXTRA_DUPLICATE_FROM_ID)?.let { store.get(it) }
 
-        binding.toolbar.title = when {
-            existing != null -> "编辑隧道"
-            duplicateSource != null -> "复制隧道"
-            else -> "新建隧道"
-        }
+        binding.toolbar.setTitle(
+            when {
+                existing != null -> R.string.tunnel_edit_title_edit
+                duplicateSource != null -> R.string.tunnel_edit_title_duplicate
+                else -> R.string.tunnel_edit_title_new
+            }
+        )
         binding.toolbar.menu.findItem(R.id.actionDelete)?.let {
             it.isVisible = existing != null
-            it.title = "删除此隧道"
+            it.setTitle(R.string.tunnel_edit_delete)
         }
         binding.toolbar.menu.findItem(R.id.actionDuplicate)?.let {
             it.isVisible = existing != null
-            it.title = "复制为新隧道"
+            it.setTitle(R.string.tunnel_edit_duplicate)
         }
         binding.toolbar.setNavigationOnClickListener { finish() }
         binding.toolbar.setOnMenuItemClickListener { item ->
@@ -80,7 +82,7 @@ class TunnelEditActivity : AppCompatActivity() {
             existing != null -> prefill(existing!!)
             duplicateSource != null -> {
                 prefill(duplicateSource)
-                binding.editName.setText("${duplicateSource.displayName} 副本")
+                binding.editName.setText(getString(R.string.copy_of, duplicateSource.displayName))
                 // Two visitors cannot share a local port, so move the copy to the next free one.
                 binding.editBindPort.setText(nextFreeBindPort(duplicateSource.bindPort).toString())
             }
@@ -127,14 +129,14 @@ class TunnelEditActivity : AppCompatActivity() {
         if (serverAddr.isEmpty() || serverPort == null || serverName.isEmpty() ||
             secretKey.isEmpty() || bindPort == null
         ) {
-            showError("请填写完整的 frps 地址 / 端口 / serverName / secretKey / 本地端口")
+            showError(getString(R.string.tunnel_error_fields))
             return null
         }
 
         val id = existing?.id ?: UUID.randomUUID().toString()
         val portClash = store.list().any { it.id != id && it.bindPort == bindPort }
         if (portClash) {
-            showError("本地端口 $bindPort 已被另一条隧道占用，请换一个")
+            showError(getString(R.string.tunnel_error_port_taken, bindPort))
             return null
         }
 
@@ -156,10 +158,10 @@ class TunnelEditActivity : AppCompatActivity() {
     private fun confirmDelete() {
         val target = existing ?: return
         AlertDialog.Builder(this)
-            .setTitle("删除隧道")
-            .setMessage("确定删除「${target.displayName}」吗？关联的连接会变成直连。")
-            .setNegativeButton("取消", null)
-            .setPositiveButton("删除") { _, _ ->
+            .setTitle(R.string.tunnel_delete_title)
+            .setMessage(getString(R.string.tunnel_delete_message, target.displayName))
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(R.string.action_delete) { _, _ ->
                 FrpcVisitorService.stop(applicationContext, target.id)
                 store.delete(target.id)
                 finish()

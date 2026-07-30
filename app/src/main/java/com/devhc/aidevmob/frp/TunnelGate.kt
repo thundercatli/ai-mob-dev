@@ -1,6 +1,7 @@
 package com.devhc.aidevmob.frp
 
 import android.content.Context
+import com.devhc.aidevmob.R
 
 /**
  * Blocking "make sure this tunnel is up" helper for background threads (the tmux probe). The
@@ -29,11 +30,14 @@ object TunnelGate {
             val status = FrpcRuntime.statusOf(tunnelId)
             when (status.state) {
                 FrpcRuntime.State.RUNNING -> return null
-                FrpcRuntime.State.ERROR ->
-                    return "隧道「${tunnel.displayName}」启动失败：${status.lastError ?: "未知错误"}"
+                FrpcRuntime.State.ERROR -> return context.getString(
+                    R.string.tunnel_gate_failed,
+                    tunnel.displayName,
+                    status.lastError ?: context.getString(R.string.error_unknown)
+                )
                 else -> Thread.sleep(POLL_INTERVAL_MS)
             }
         }
-        return "隧道「${tunnel.displayName}」启动超时"
+        return context.getString(R.string.tunnel_gate_timeout, tunnel.displayName)
     }
 }

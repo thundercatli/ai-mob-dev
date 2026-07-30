@@ -1,14 +1,330 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">AI Dev Mobile</string>
+    <!-- Product name: the same in every language. -->
+    <string name="app_name" translatable="false">AI Dev Mobile</string>
 
-    <string name="tab_connect">连接</string>
-    <string name="tab_credential">认证</string>
-    <string name="tab_tunnel">隧道</string>
-    <string name="tab_settings">设置</string>
+    <string name="tab_connect">Connections</string>
+    <string name="tab_credential">Credentials</string>
+    <string name="tab_tunnel">Tunnels</string>
+    <string name="tab_settings">Settings</string>
 
     <!-- Used by the vendored com.termux.view.textselection classes. -->
     <string name="paste_text">Paste</string>
     <string name="copy_text">Copy</string>
     <string name="text_selection_more">More…</string>
+
+    <!-- ============================================================ shared -->
+    <string name="action_save">Save</string>
+    <string name="action_save_only">Save only</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_edit">Edit</string>
+    <string name="action_back">Back</string>
+    <string name="action_use">Use</string>
+    <string name="action_later">Later</string>
+    <string name="action_open_settings">Open settings</string>
+    <string name="value_unknown">unknown</string>
+    <string name="error_unknown">unknown error</string>
+    <!-- Suffix for a profile created by duplicating another one. -->
+    <string name="copy_of">%1$s copy</string>
+    <string name="quoted">“%1$s”</string>
+
+    <!-- ============================================================ connection list -->
+    <string name="connection_list_subtitle">Pick a connection to open its terminal</string>
+    <string name="connection_list_empty">No connections yet — tap the button below to add one</string>
+    <string name="connection_new">New connection</string>
+    <plurals name="connection_list_tunnels_running">
+        <item quantity="one">%1$d tunnel is up — tap a connection to open its terminal</item>
+        <item quantity="other">%1$d tunnels are up — tap a connection to open its terminal</item>
+    </plurals>
+    <string name="connection_list_idle">Tap a connection to open its terminal; its tunnel starts automatically</string>
+    <string name="connection_direct">Direct</string>
+    <string name="connection_via_tunnel">Tunnel · %1$s</string>
+    <string name="connection_via_tunnel_running">Tunnel · %1$s · running</string>
+    <string name="connection_row_subtitle">%1$s  ·  %2$s</string>
+    <string name="connection_no_credential">no credential</string>
+
+    <!-- ============================================================ credential list -->
+    <string name="credential_list_title">Credentials</string>
+    <string name="credential_list_subtitle">Username plus a password or private key, shared by any number of connections</string>
+    <string name="credential_list_empty">No credentials yet — tap the button below to add one</string>
+    <string name="credential_new">New credential</string>
+    <string name="credential_unused">Not used by any connection</string>
+    <plurals name="credential_used_by">
+        <item quantity="one">Used by %1$d connection</item>
+        <item quantity="other">Used by %1$d connections</item>
+    </plurals>
+    <!-- Default name for a credential lifted out of an old connection profile. -->
+    <string name="credential_default_name">Credential</string>
+
+    <!-- ============================================================ tunnel list -->
+    <string name="tunnel_list_title">frpc STCP tunnels</string>
+    <string name="tunnel_list_subtitle">Bundled frpc (arm64) connects to frps as a visitor — no public port is opened</string>
+    <string name="tunnel_list_empty">No tunnels yet — tap the button below to add one</string>
+    <string name="tunnel_new">New tunnel</string>
+    <string name="tunnel_state_stopped">Stopped</string>
+    <string name="tunnel_state_starting">Connecting…</string>
+    <string name="tunnel_state_running">Connected · local 127.0.0.1:%1$d</string>
+    <string name="tunnel_state_error">Error: %1$s</string>
+    <string name="tunnel_action_start">Start</string>
+    <string name="tunnel_action_stop">Stop</string>
+    <string name="tunnel_action_log">Log</string>
+    <string name="tunnel_action_log_collapse">Hide log</string>
+    <!-- Foreground service notification while frpc runs. -->
+    <string name="tunnel_notification_title">frpc STCP tunnel</string>
+    <string name="tunnel_notification_channel">frpc tunnel status</string>
+    <string name="tunnel_notification_none">No tunnel running</string>
+    <plurals name="tunnel_notification_all_up">
+        <item quantity="one">%1$d tunnel connected</item>
+        <item quantity="other">%1$d tunnels connected</item>
+    </plurals>
+    <string name="tunnel_notification_partial">%1$d/%2$d tunnels connected</string>
+    <string name="tunnel_error_not_executable">frpc binary is not executable: %1$s</string>
+    <string name="tunnel_error_gave_up">Exit code %1$d, gave up after %2$d retries</string>
+    <string name="tunnel_gate_failed">Tunnel “%1$s” failed to start: %2$s</string>
+    <string name="tunnel_gate_timeout">Tunnel “%1$s” timed out while starting</string>
+
+    <!-- ============================================================ connection editor -->
+    <string name="connection_edit_toolbar">Connection</string>
+    <string name="connection_edit_title_new">New connection</string>
+    <string name="connection_edit_title_edit">Edit connection</string>
+    <string name="connection_edit_title_duplicate">Duplicate connection</string>
+    <string name="connection_edit_delete">Delete this connection</string>
+    <string name="connection_edit_duplicate">Duplicate as a new connection</string>
+    <string name="connection_section_target">SSH target</string>
+    <string name="connection_hint_name">Name (defaults to user@host)</string>
+    <string name="connection_hint_tunnel">Through tunnel</string>
+    <string name="connection_hint_host">Host (e.g. 192.168.1.10)</string>
+    <string name="connection_hint_port">Port (default 22)</string>
+    <string name="connection_hint_tmux">tmux session name</string>
+    <string name="connection_helper_tmux">Leave empty for a plain shell</string>
+    <string name="connection_action_probe">Probe remote sessions</string>
+    <string name="connection_section_credential">Credential</string>
+    <string name="connection_hint_credential">Credential to use</string>
+    <string name="connection_action_new_credential">New credential</string>
+    <string name="connection_action_edit_credential">Edit selected</string>
+    <string name="connection_action_save_and_connect">Save and connect</string>
+    <string name="connection_no_tunnel">No tunnel (direct)</string>
+    <string name="connection_tunnel_target">The tunnel decides the SSH target: %1$s:%2$d (local port of “%3$s”)</string>
+    <string name="connection_credential_none">No credentials yet — tap “New credential” to add a username plus a password or key</string>
+    <string name="connection_credential_pick">Pick a credential</string>
+    <string name="connection_error_no_credential_selected">No credential selected yet</string>
+    <string name="connection_error_pick_credential">Pick a credential (tap “New credential” if you have none)</string>
+    <string name="connection_error_host_port">Fill in Host / Port</string>
+    <string name="connection_delete_title">Delete connection</string>
+    <string name="connection_delete_message">Delete “%1$s”?</string>
+
+    <!-- tmux session picker -->
+    <string name="tmux_probing">Connecting to the remote host to list tmux sessions…</string>
+    <string name="tmux_probe_failed">Probe failed: %1$s</string>
+    <string name="tmux_picker_title">Pick a tmux session</string>
+    <string name="tmux_picker_title_empty">No tmux session on the remote host yet</string>
+    <string name="tmux_picker_subtitle_empty">Create one, or open a plain shell this time</string>
+    <plurals name="tmux_picker_subtitle">
+        <item quantity="one">%2$d session on %1$s</item>
+        <item quantity="other">%2$d sessions on %1$s</item>
+    </plurals>
+    <string name="tmux_action_new_session">Create a new session</string>
+    <string name="tmux_action_no_session">No tmux, just a plain shell</string>
+    <plurals name="tmux_windows">
+        <item quantity="one">%1$d window</item>
+        <item quantity="other">%1$d windows</item>
+    </plurals>
+    <string name="tmux_attached">Attached</string>
+    <string name="tmux_has_client">has a client attached</string>
+    <string name="tmux_summary">%1$s · %2$s</string>
+    <string name="tmux_helper_attach">Attach to existing session · %1$s</string>
+    <string name="tmux_helper_new">Creates session “%1$s” on connect</string>
+    <string name="tmux_new_dialog_title">New tmux session</string>
+    <string name="tmux_new_dialog_hint">Session name</string>
+    <string name="tmux_new_dialog_helper">Attaches instead if a session with that name already exists</string>
+    <string name="tmux_error_not_runnable">Could not run tmux on the remote host</string>
+    <string name="tmux_error_not_found">tmux was not found on the remote host — check that it is installed and on the login shell\'s PATH</string>
+    <string name="tmux_error_list_failed">tmux list-sessions failed (exit code %1$s)</string>
+
+    <!-- ============================================================ credential editor -->
+    <string name="credential_edit_toolbar">Credential</string>
+    <string name="credential_edit_title_new">New credential</string>
+    <string name="credential_edit_title_edit">Edit credential</string>
+    <string name="credential_section_identity">Identity</string>
+    <string name="credential_hint_name">Name</string>
+    <string name="credential_helper_name">Defaults to the username</string>
+    <string name="credential_hint_username">Username</string>
+    <string name="credential_section_auth">Sign-in method</string>
+    <string name="credential_auth_password">Password</string>
+    <string name="credential_auth_key">Private key</string>
+    <string name="credential_hint_password">Password</string>
+    <string name="credential_action_pick_file">Pick a file</string>
+    <string name="credential_action_paste">Paste clipboard</string>
+    <string name="credential_hint_private_key">Private key (PEM, OpenSSH/PKCS8)</string>
+    <string name="credential_hint_passphrase">Key passphrase (if any)</string>
+    <string name="credential_key_read_failed">Could not read “%1$s”, or the file is too large</string>
+    <string name="credential_key_is_public">“%1$s” looks like a public key — pick the matching private key</string>
+    <string name="credential_key_from_file">Read from “%1$s” · %2$s</string>
+    <string name="credential_key_from_clipboard">Read from the clipboard · %1$s</string>
+    <string name="credential_clipboard_empty">The clipboard holds no text</string>
+    <string name="credential_key_missing">No private key yet</string>
+    <string name="credential_key_not_pem">This does not look like a PEM private key; it can still be saved but may not work</string>
+    <string name="credential_key_summary">%1$s · %2$d characters</string>
+    <string name="credential_file_fallback_name">file</string>
+    <string name="credential_error_username">Fill in the username</string>
+    <string name="credential_error_key">Pick a private key file, or paste the key</string>
+    <string name="credential_delete_title">Delete credential</string>
+    <string name="credential_delete_message">Delete “%1$s”?</string>
+    <plurals name="credential_delete_in_use">
+        <item quantity="one">“%1$s” is used by %2$d connection, which will need a new credential picked. Delete it anyway?</item>
+        <item quantity="other">“%1$s” is used by %2$d connections, which will need a new credential picked. Delete it anyway?</item>
+    </plurals>
+
+    <!-- ============================================================ tunnel editor -->
+    <string name="tunnel_edit_toolbar">Tunnel</string>
+    <string name="tunnel_edit_title_new">New tunnel</string>
+    <string name="tunnel_edit_title_edit">Edit tunnel</string>
+    <string name="tunnel_edit_title_duplicate">Duplicate tunnel</string>
+    <string name="tunnel_edit_delete">Delete this tunnel</string>
+    <string name="tunnel_edit_duplicate">Duplicate as a new tunnel</string>
+    <string name="tunnel_section_server">frps server</string>
+    <string name="tunnel_hint_name">Name (defaults to serverName)</string>
+    <string name="tunnel_hint_addr">frps address</string>
+    <string name="tunnel_hint_port">frps port (default 7000)</string>
+    <string name="tunnel_hint_token">frps auth token (leave empty if unused)</string>
+    <string name="tunnel_hint_server_name">serverName (matches the stcp proxy name)</string>
+    <string name="tunnel_hint_secret_key">secretKey (matches the stcp proxy)</string>
+    <string name="tunnel_hint_bind_port">Local bind port (must be unique per tunnel)</string>
+    <string name="tunnel_action_save_and_start">Save and start</string>
+    <string name="tunnel_error_fields">Fill in the frps address / port / serverName / secretKey / local port</string>
+    <string name="tunnel_error_port_taken">Local port %1$d is already taken by another tunnel — pick another</string>
+    <string name="tunnel_delete_title">Delete tunnel</string>
+    <string name="tunnel_delete_message">Delete “%1$s”? Connections using it fall back to a direct connection.</string>
+
+    <!-- ============================================================ terminal -->
+    <string name="terminal_menu_keyboard">Show keyboard</string>
+    <string name="terminal_menu_reconnect">Reconnect</string>
+    <string name="terminal_menu_disconnect">Disconnect and go back</string>
+    <string name="terminal_no_connection">No connection profile available</string>
+    <string name="terminal_no_credential">This connection has no credential yet — pick one in its settings first</string>
+    <string name="terminal_status_tunnel_starting">Starting tunnel “%1$s”…</string>
+    <string name="terminal_status_tunnel_failed">Tunnel “%1$s” failed to start: %2$s. Tap here to retry</string>
+    <string name="terminal_status_tunnel_timeout">Tunnel “%1$s” timed out while starting. Tap here to retry</string>
+    <string name="terminal_status_connecting">Connecting…</string>
+    <string name="terminal_status_disconnected">Disconnected. Tap here to retry</string>
+    <string name="terminal_status_reconnecting">Disconnected, reconnecting in %1$ds (attempt %2$d/%3$d)…</string>
+    <string name="terminal_host_key_mismatch">Warning: the host key of %1$s:%2$d differs from last time — connection refused</string>
+
+    <!-- ============================================================ settings -->
+    <string name="settings_subtitle">Global options, self-diagnostics and version info</string>
+
+    <string name="settings_section_check">Diagnostics</string>
+    <string name="settings_action_recheck">Run again</string>
+    <string name="settings_check_running">Checking…</string>
+    <string name="settings_check_failed">Check failed: %1$s</string>
+    <string name="settings_check_summary_fail">%1$d failed, %2$d warnings, %3$d checks total</string>
+    <string name="settings_check_summary_warn">%1$d warnings, the rest fine (%2$d checks total)</string>
+    <string name="settings_check_summary_ok">All fine (%1$d checks)</string>
+    <string name="settings_open_system_failed">Could not open the system settings screen</string>
+
+    <string name="settings_section_global">Global options</string>
+    <string name="settings_font_size">Terminal font size</string>
+    <string name="settings_font_size_value">%1$d sp, applies next time you open a terminal</string>
+    <string name="settings_keep_screen_on">Keep the screen on in the terminal</string>
+    <string name="settings_keep_screen_on_detail">A long-running job will not be cut off by the lock screen (uses more battery)</string>
+    <string name="settings_permission_prompt">Suggest permissions at startup</string>
+    <string name="settings_permission_prompt_detail">Turn this on to undo a previous “Don\'t ask again”</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_language_system">Follow system</string>
+    <string name="settings_language_dialog_title">Language</string>
+    <string name="settings_language_change">Change</string>
+
+    <string name="settings_section_update">Updates</string>
+    <string name="settings_action_check_update">Check for updates</string>
+    <string name="settings_action_open_releases">Open releases page</string>
+    <string name="settings_update_token_hint">GitHub token (optional)</string>
+    <string name="settings_update_token_helper">The repository is public, so no token is needed. Add one only if you hit GitHub\'s rate limit; it is kept in encrypted storage.</string>
+    <string name="settings_update_current">Current version %1$s (versionCode %2$d)</string>
+    <string name="settings_update_querying">Asking GitHub…</string>
+    <string name="settings_update_up_to_date">Up to date (local %1$s, latest release %2$s)</string>
+    <string name="settings_update_failed">Check failed: %1$s</string>
+    <string name="settings_update_available">Version %1$s is available (local %2$s)</string>
+    <string name="settings_update_dialog_title">Version %1$s is available</string>
+    <string name="settings_update_dialog_message">%1$s → %2$s</string>
+    <string name="settings_update_dialog_footer">The download falls back to the %1$s mirror if github.com is unreachable. The APK is signed with the same key, so it installs over this build.</string>
+    <string name="settings_update_action_download">Download and install</string>
+    <string name="settings_update_downloading">Downloading %1$s… %2$d%%</string>
+    <string name="settings_update_downloading_mirror">Downloading %1$s via the mirror… %2$d%%</string>
+    <string name="settings_update_download_failed">Download failed: %1$s</string>
+    <string name="settings_update_downloaded">Downloaded %1$s — starting the installer</string>
+    <string name="settings_update_no_apk">This release has no APK attached; open the releases page instead</string>
+    <string name="settings_update_install_permission">Android needs permission to install apps from this app. Grant it, then tap “Download and install” again.</string>
+    <string name="settings_update_install_failed">Nothing on this device can install an APK</string>
+
+    <string name="update_error_http">GitHub returned HTTP %1$d</string>
+    <string name="update_error_not_found">Repository or release not found (HTTP 404)</string>
+    <string name="update_error_rate_limited">GitHub refused the request (HTTP %1$d) — most likely its anonymous rate limit. Add a token below and try again.</string>
+    <string name="update_error_no_tag">The response contained no tag_name</string>
+
+    <string name="settings_section_about">About</string>
+    <string name="settings_action_open_repo">Open project page</string>
+    <string name="settings_about_version">Version %1$s (versionCode %2$d)</string>
+    <string name="settings_about_package">Package %1$s</string>
+    <string name="settings_about_device">Device %1$s %2$s · Android %3$s (API %4$d)</string>
+    <string name="settings_about_abi">ABI %1$s</string>
+    <string name="settings_about_signature">Signature SHA-256 %1$s</string>
+    <string name="settings_about_signature_failed">could not be read</string>
+    <string name="settings_about_credits_terminal">Terminal engine from Termux\'s terminal-view / terminal-emulator (Apache-2.0)</string>
+    <string name="settings_about_credits_tunnel">Tunnelling uses the bundled frpc (STCP visitor); SSH is sshj + BouncyCastle</string>
+    <string name="settings_no_browser">No app can open this link</string>
+
+    <string name="settings_section_help">Help</string>
+    <string name="settings_help_setup">Set things up in this order: create a “Credential” (username plus password or private key), then a “Tunnel” (frpc STCP visitor), then a “Connection” that ties the two together. Picking a tunnel derives Host/Port from it, so there is nothing to type.</string>
+    <string name="settings_help_tmux">tmux: “Probe remote sessions” in the connection editor lists what is already running so you can attach to it, create a new one, or skip tmux. With tmux a dropped link resumes exactly where it left off; without it, a drop loses the shell.</string>
+    <string name="settings_help_keys">Terminal key row: ESC / CTRL / arrows (hold to repeat) / TAB / S-TAB / ^C / ^D / Home / End / PgUp / PgDn and more — swipe it sideways. CTRL is sticky: tap it, then a letter, for Ctrl+letter.</string>
+    <string name="settings_help_troubleshoot">When a connection fails, work down: the diagnostics above, then that tunnel\'s log on the Tunnels tab (all of frpc\'s output lands there), then whether the remote sshd and its port are reachable at all.</string>
+
+    <!-- ============================================================ environment check -->
+    <string name="env_frpc_binary">frpc binary</string>
+    <string name="env_frpc_binary_missing">%1$s not found. This build was probably made without compiling frpc (see scripts/build_frpc.sh); tunnels will not work.</string>
+    <string name="env_frpc_binary_not_executable">%1$s exists but is not executable, so starting a tunnel fails immediately.</string>
+    <string name="env_frpc_binary_ok">Executable, %1$d MB</string>
+    <string name="env_frpc_runs">frpc runs</string>
+    <string name="env_frpc_runs_skipped">Skipped: the binary is not executable</string>
+    <string name="env_frpc_runs_timeout">frpc -v timed out (5s), but the binary itself is there</string>
+    <string name="env_frpc_runs_no_output">Starts, but printed no version (exit code %1$d)</string>
+    <string name="env_frpc_runs_ok">frpc %1$s</string>
+    <string name="env_frpc_runs_failed">Cannot execute: %1$s</string>
+    <string name="env_crypto">Crypto provider</string>
+    <string name="env_crypto_missing">No BC provider registered; SSH key exchange may fail.</string>
+    <string name="env_crypto_ok">BouncyCastle %1$s (replaced the system\'s cut-down build)</string>
+    <string name="env_crypto_wrong">The BC provider is %1$s rather than the full BouncyCastle, so some key types may be unsupported.</string>
+    <string name="env_network">Network</string>
+    <string name="env_network_none">No network available, so neither the tunnel nor SSH can connect.</string>
+    <string name="env_network_no_internet">Connected, but the system has not marked this network as online.</string>
+    <string name="env_network_cellular">Mobile data</string>
+    <string name="env_network_ethernet">Ethernet</string>
+    <string name="env_network_other">Connected</string>
+    <string name="env_network_unvalidated">%1$s (connectivity not verified yet)</string>
+    <string name="env_notifications">Notification permission</string>
+    <string name="env_notifications_not_needed">Not required on Android 12 and below</string>
+    <string name="env_notifications_ok">Granted, so the tunnel\'s ongoing notification is visible</string>
+    <string name="env_notifications_missing">Not granted. Tunnels still run in the background, but their status is invisible and the notification shortcut back to the tunnel page is gone.</string>
+    <string name="env_battery">Battery optimisation</string>
+    <string name="env_battery_ok">Exempt, so the app is unlikely to be killed in the background</string>
+    <string name="env_battery_missing">Not exempt. After the screen is off or the app has been in the background a while, the system may kill frpc, dropping the tunnel and the terminal.</string>
+    <string name="env_config">Configuration</string>
+    <string name="env_config_summary">%1$d connections · %2$d credentials · %3$d tunnels</string>
+    <string name="env_config_empty">Nothing configured yet. Create a credential first, then a connection.</string>
+    <plurals name="env_config_orphaned">
+        <item quantity="one">%1$s. %2$d connection has no credential and will be refused at connect time: %3$s</item>
+        <item quantity="other">%1$s. %2$d connections have no credential and will be refused at connect time: %3$s</item>
+    </plurals>
+
+    <!-- ============================================================ startup permission prompt -->
+    <string name="startup_title">Suggested permissions</string>
+    <string name="startup_intro">None of these are required — connecting works without them — but skipping them has consequences:</string>
+    <string name="startup_item">\n· %1$s\n  %2$s\n</string>
+    <string name="startup_never">Don\'t ask again</string>
+    <string name="startup_grant">Grant</string>
+    <string name="startup_notifications">Notification permission</string>
+    <string name="startup_notifications_detail">A tunnel running in the background keeps an ongoing notification. Without it you cannot see whether the tunnel is up, nor jump back to the tunnel page from the shade.</string>
+    <string name="startup_battery">Ignore battery optimisation</string>
+    <string name="startup_battery_detail">Without it, the system may kill frpc once the screen has been off or the app backgrounded for a while, dropping the tunnel and the terminal (the remote tmux session survives, so reconnecting resumes it).</string>
 </resources>
