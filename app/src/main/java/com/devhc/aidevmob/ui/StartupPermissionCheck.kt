@@ -44,7 +44,10 @@ class StartupPermissionCheck(private val activity: AppCompatActivity) {
         }
     }
 
-    private val prefs = activity.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    // Lazily, not eagerly: this object is built in MainActivity's field initializer (so the launchers
+    // below can register before STARTED), which runs inside the Activity constructor - before
+    // attachBaseContext(), when the context has no base yet and every Context call NPEs.
+    private val prefs by lazy { activity.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
 
     /** Advice still to walk the user through, one system prompt at a time. */
     private val pending = ArrayDeque<Advice>()
