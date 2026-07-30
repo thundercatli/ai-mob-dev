@@ -179,6 +179,13 @@ class TerminalActivity : AppCompatActivity() {
             showKeyboard()
             true
         }
+        R.id.actionBrowseFiles -> {
+            startActivity(
+                android.content.Intent(this, FileBrowserActivity::class.java)
+                    .putExtra(FileBrowserActivity.EXTRA_CONNECTION_ID, config.id)
+            )
+            true
+        }
         R.id.actionTmuxNewWindow -> sendTmuxKey('c')
         R.id.actionTmuxNextWindow -> sendTmuxKey('n')
         R.id.actionTmuxPrevWindow -> sendTmuxKey('p')

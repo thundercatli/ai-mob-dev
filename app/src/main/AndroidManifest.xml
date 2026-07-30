@@ -50,6 +50,11 @@
             android:windowSoftInputMode="adjustResize" />
 
         <activity
+            android:name=".ui.FileBrowserActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name=".ui.TerminalActivity"
             android:exported="false"
             android:theme="@style/Theme.AiDevMob.Terminal"

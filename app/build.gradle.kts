@@ -91,6 +91,8 @@ dependencies {
     implementation("androidx.security:security-crypto:1.1.0")
     implementation("androidx.fragment:fragment-ktx:1.8.5")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
+    // Pull-to-refresh in the file browser, which is the gesture a file list is expected to have.
+    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
 
     // SSH transport (SFTP/exec/shell over SSH). Used to attach to the remote tmux session.
     implementation("com.hierynomus:sshj:0.40.0")

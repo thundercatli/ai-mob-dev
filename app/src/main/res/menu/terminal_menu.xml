@@ -27,6 +27,10 @@
         android:title="@string/terminal_menu_tmux_rename_window"
         app:showAsAction="never" />
     <item
+        android:id="@+id/actionBrowseFiles"
+        android:title="@string/terminal_menu_browse_files"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/actionReconnect"
         android:title="@string/terminal_menu_reconnect"
         app:showAsAction="never" />

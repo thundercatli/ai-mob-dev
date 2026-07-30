@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/actionHome"
+        android:title="@string/files_action_home"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/actionSort"
+        android:title="@string/files_action_sort"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/actionToggleHidden"
+        android:title="@string/files_action_show_hidden"
+        android:checkable="true"
+        app:showAsAction="never" />
+</menu>

@@ -10,7 +10,8 @@ import com.devhc.aidevmob.ssh.ConnectionConfig
 
 class ConnectionAdapter(
     private val onOpen: (ConnectionConfig) -> Unit,
-    private val onEdit: (ConnectionConfig) -> Unit
+    private val onEdit: (ConnectionConfig) -> Unit,
+    private val onBrowseFiles: (ConnectionConfig) -> Unit
 ) : RecyclerView.Adapter<ConnectionAdapter.ViewHolder>() {
 
     /**
@@ -71,6 +72,7 @@ class ConnectionAdapter(
             )
             binding.root.setOnClickListener { onOpen(config) }
             binding.buttonEdit.setOnClickListener { onEdit(config) }
+            binding.buttonFiles.setOnClickListener { onBrowseFiles(config) }
         }
     }
 }

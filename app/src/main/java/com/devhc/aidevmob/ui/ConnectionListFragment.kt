@@ -40,7 +40,11 @@ class ConnectionListFragment : Fragment() {
         store = ConnectionStore(appContext)
         credentialStore = CredentialStore(appContext)
 
-        adapter = ConnectionAdapter(onOpen = ::openTerminal, onEdit = ::editConnection)
+        adapter = ConnectionAdapter(
+            onOpen = ::openTerminal,
+            onEdit = ::editConnection,
+            onBrowseFiles = ::browseFiles
+        )
         binding.recyclerConnections.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerConnections.adapter = adapter
 
@@ -98,6 +102,14 @@ class ConnectionListFragment : Fragment() {
         startActivity(
             Intent(requireContext(), TerminalActivity::class.java)
                 .putExtra(TerminalActivity.EXTRA_CONNECTION_ID, config.id)
+        )
+    }
+
+    /** Opens the remote filesystem for this profile without going through the terminal first. */
+    private fun browseFiles(config: ConnectionConfig) {
+        startActivity(
+            Intent(requireContext(), FileBrowserActivity::class.java)
+                .putExtra(FileBrowserActivity.EXTRA_CONNECTION_ID, config.id)
         )
     }
 

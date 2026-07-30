@@ -58,6 +58,15 @@
         </LinearLayout>
 
         <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonFiles"
+            style="@style/Widget.Material3.Button.IconButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:contentDescription="@string/connection_action_files"
+            app:icon="@drawable/ic_folder_open"
+            app:iconTint="?attr/colorOnSurfaceVariant" />
+
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/buttonEdit"
             style="@style/Widget.Material3.Button.IconButton"
             android:layout_width="wrap_content"
