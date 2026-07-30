@@ -52,13 +52,28 @@ jobs:
       - name: Configure signing
         env:
           STORE_FILE_BASE64: ${{ secrets.STORE_FILE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          if [ -n "$STORE_FILE_BASE64" ]; then
+          missing=""
+          for name in STORE_FILE_BASE64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then missing="$missing $name"; fi
+          done
+
+          if [ -z "$missing" ]; then
             echo "$STORE_FILE_BASE64" | base64 -d > release.jks
             echo "STORE_FILE=release.jks" >> "$GITHUB_ENV"
             echo "Signing with the keystore from secrets."
+          elif [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            # Falling back to the debug key would still produce an installable APK, so this failure is
+            # otherwise silent - and an APK signed with a different certificate cannot upgrade an
+            # installed one, forcing every user to uninstall and lose their saved config. Survivable on
+            # a branch build, never on a release.
+            echo "::error::Release signing secrets are missing:$missing — refusing to publish a tag signed with the debug key."
+            exit 1
           else
-            echo "No STORE_FILE_BASE64 secret set; the release build will use the debug key."
+            echo "::warning::No release signing secrets ($missing ); this build uses the debug key and cannot upgrade a released install."
           fi
 
       # For a tag build, report the tag (without the leading "v") as the app's version, and use the
