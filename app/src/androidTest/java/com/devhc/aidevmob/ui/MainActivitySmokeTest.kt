@@ -45,9 +45,10 @@ class MainActivitySmokeTest {
     }
 
     /**
-     * Each tab's fragment reads its own EncryptedSharedPreferences store on first draw, so walking the
-     * three of them also covers the keystore-backed stores and the credential migration in
-     * Application.onCreate.
+     * Each tab's fragment reads its own EncryptedSharedPreferences store on first draw, so walking all
+     * of them also covers the keystore-backed stores and the credential migration in
+     * Application.onCreate. The settings tab additionally kicks off the environment check, which execs
+     * frpc on a background thread.
      */
     @Test
     fun everyTabLoadsItsFragment() {
@@ -57,7 +58,8 @@ class MainActivitySmokeTest {
         val tabs = listOf(
             R.id.navConnect to ConnectionListFragment::class.java,
             R.id.navCredential to CredentialListFragment::class.java,
-            R.id.navTunnel to TunnelListFragment::class.java
+            R.id.navTunnel to TunnelListFragment::class.java,
+            R.id.navSettings to SettingsFragment::class.java
         )
 
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->

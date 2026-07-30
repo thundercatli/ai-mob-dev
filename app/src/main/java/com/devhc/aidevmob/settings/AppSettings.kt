@@ -1,0 +1,52 @@
+package com.devhc.aidevmob.settings
+
+import android.content.Context
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
+
+/**
+ * App-wide preferences, as opposed to the per-connection / per-tunnel config in the other stores.
+ *
+ * Encrypted like those stores rather than plain: [updateToken] is a GitHub token, and keeping every
+ * user-supplied secret behind the same keystore-backed key is one less thing to reason about.
+ */
+class AppSettings(context: Context) {
+
+    private val prefs = EncryptedSharedPreferences.create(
+        context,
+        "app_settings",
+        MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
+        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+    )
+
+    /** Terminal font size in sp. Clamped so the terminal can never be rendered unusable. */
+    var terminalFontSize: Int
+        get() = prefs.getInt(KEY_FONT_SIZE, DEFAULT_FONT_SIZE).coerceIn(MIN_FONT_SIZE, MAX_FONT_SIZE)
+        set(value) = prefs.edit()
+            .putInt(KEY_FONT_SIZE, value.coerceIn(MIN_FONT_SIZE, MAX_FONT_SIZE))
+            .apply()
+
+    /** Whether the terminal keeps the screen awake, so a long build doesn't get cut off by the lock screen. */
+    var keepScreenOn: Boolean
+        get() = prefs.getBoolean(KEY_KEEP_SCREEN_ON, false)
+        set(value) = prefs.edit().putBoolean(KEY_KEEP_SCREEN_ON, value).apply()
+
+    /**
+     * GitHub token used only to read the releases list. Needed because this repo is private: without
+     * one the API answers 404 and the in-app update check cannot work at all.
+     */
+    var updateToken: String?
+        get() = prefs.getString(KEY_UPDATE_TOKEN, null)?.takeIf { it.isNotBlank() }
+        set(value) = prefs.edit().putString(KEY_UPDATE_TOKEN, value?.trim().orEmpty()).apply()
+
+    companion object {
+        const val MIN_FONT_SIZE = 8
+        const val MAX_FONT_SIZE = 28
+        const val DEFAULT_FONT_SIZE = 13
+
+        private const val KEY_FONT_SIZE = "terminalFontSize"
+        private const val KEY_KEEP_SCREEN_ON = "keepScreenOn"
+        private const val KEY_UPDATE_TOKEN = "updateToken"
+    }
+}

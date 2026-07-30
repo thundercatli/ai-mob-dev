@@ -5,6 +5,7 @@
     <string name="tab_connect">连接</string>
     <string name="tab_credential">认证</string>
     <string name="tab_tunnel">隧道</string>
+    <string name="tab_settings">设置</string>
 
     <!-- Used by the vendored com.termux.view.textselection classes. -->
     <string name="paste_text">Paste</string>

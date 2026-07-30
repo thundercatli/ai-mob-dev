@@ -11,6 +11,7 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import android.widget.TextView
 import android.widget.Toast
@@ -18,6 +19,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.devhc.aidevmob.R
 import com.devhc.aidevmob.databinding.ActivityTerminalBinding
 import com.devhc.aidevmob.frp.FrpcConfigStore
+import com.devhc.aidevmob.settings.AppSettings
 import com.devhc.aidevmob.frp.FrpcRuntime
 import com.devhc.aidevmob.frp.FrpcVisitorService
 import com.devhc.aidevmob.ssh.ConnectionConfig
@@ -74,7 +76,10 @@ class TerminalActivity : AppCompatActivity() {
         binding.toolbar.setOnMenuItemClickListener(::onMenuItemClick)
 
         viewClient = AppTerminalViewClient(onRequestKeyboard = ::showKeyboard)
-        binding.terminalView.setTextSize(spToPx(13f))
+        val settings = AppSettings(applicationContext)
+        binding.terminalView.setTextSize(spToPx(settings.terminalFontSize.toFloat()))
+        // Long-running commands shouldn't be interrupted by the lock screen when the user asked for it.
+        if (settings.keepScreenOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         binding.terminalView.setTerminalViewClient(viewClient)
         binding.terminalView.requestFocus()
 

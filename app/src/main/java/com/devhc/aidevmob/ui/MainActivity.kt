@@ -25,6 +25,7 @@ class MainActivity : AppCompatActivity() {
             val fragment = when (item.itemId) {
                 R.id.navTunnel -> TunnelListFragment()
                 R.id.navCredential -> CredentialListFragment()
+                R.id.navSettings -> SettingsFragment()
                 else -> ConnectionListFragment()
             }
             showFragment(fragment)
