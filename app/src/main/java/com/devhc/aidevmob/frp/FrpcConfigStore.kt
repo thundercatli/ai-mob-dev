@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import java.util.UUID
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -26,8 +27,11 @@ class FrpcConfigStore(context: Context) {
         )
     }
 
+    private val serverStore = FrpsServerStore(context)
+
     init {
         migrateLegacySingleProfile()
+        migrateInlineServers()
     }
 
     fun list(): List<FrpcConfig> {
@@ -55,25 +59,26 @@ class FrpcConfigStore(context: Context) {
         prefs.edit().putString(KEY_TUNNELS, array.toString()).apply()
     }
 
-    /** Folds the single profile written by earlier builds into the list, so upgrades keep it. */
+    /**
+     * Folds the single profile written by earlier builds into the list, so upgrades keep it. Writes it
+     * in the old flat shape on purpose - [migrateInlineServers] runs next and splits it like any other.
+     */
     private fun migrateLegacySingleProfile() {
         if (prefs.contains(KEY_TUNNELS)) return
         val serverAddr = prefs.getString(LEGACY_SERVER_ADDR, null) ?: return
         val secretKey = prefs.getString(LEGACY_SECRET_KEY, null) ?: return
         val serverName = prefs.getString(LEGACY_SERVER_NAME, null) ?: return
-        writeAll(
-            listOf(
-                FrpcConfig(
-                    name = "",
-                    serverAddr = serverAddr,
-                    serverPort = prefs.getInt(LEGACY_SERVER_PORT, 7000),
-                    authToken = prefs.getString(LEGACY_AUTH_TOKEN, null),
-                    secretKey = secretKey,
-                    serverName = serverName,
-                    bindPort = prefs.getInt(LEGACY_BIND_PORT, 6022)
-                )
-            )
-        )
+        val flat = JSONObject().apply {
+            put("id", UUID.randomUUID().toString())
+            put("name", "")
+            put("serverAddr", serverAddr)
+            put("serverPort", prefs.getInt(LEGACY_SERVER_PORT, 7000))
+            put("authToken", prefs.getString(LEGACY_AUTH_TOKEN, null) ?: JSONObject.NULL)
+            put("secretKey", secretKey)
+            put("serverName", serverName)
+            put("bindPort", prefs.getInt(LEGACY_BIND_PORT, 6022))
+        }
+        prefs.edit().putString(KEY_TUNNELS, JSONArray().put(flat).toString()).apply()
         prefs.edit()
             .remove(LEGACY_SERVER_ADDR)
             .remove(LEGACY_SERVER_PORT)
@@ -84,29 +89,62 @@ class FrpcConfigStore(context: Context) {
             .apply()
     }
 
+    /**
+     * Splits tunnels saved before servers existed: the endpoint fields move into an [FrpsServer], and
+     * tunnels sharing one endpoint end up pointing at a single record.
+     *
+     * The visitor keeps its own id, so connection profiles referencing a tunnel keep working untouched.
+     * No-op once every tunnel has a serverId.
+     */
+    private fun migrateInlineServers() {
+        val raw = prefs.getString(KEY_TUNNELS, null) ?: return
+        val array = runCatching { JSONArray(raw) }.getOrNull() ?: return
+
+        var changed = false
+        val migrated = (0 until array.length()).mapNotNull { i ->
+            val json = array.optJSONObject(i) ?: return@mapNotNull null
+            val visitor = fromJson(json) ?: return@mapNotNull null
+            if (visitor.serverId != null) return@mapNotNull visitor
+
+            val serverAddr = json.optString("serverAddr").takeIf { it.isNotEmpty() }
+                ?: return@mapNotNull visitor
+            val server = serverStore.findOrCreate(
+                FrpsServer(
+                    name = "",
+                    serverAddr = serverAddr,
+                    serverPort = json.optInt("serverPort", 7000),
+                    authToken = if (json.isNull("authToken")) {
+                        null
+                    } else {
+                        json.optString("authToken").takeIf { it.isNotEmpty() }
+                    }
+                )
+            )
+            changed = true
+            visitor.copy(serverId = server.id)
+        }
+
+        if (changed) writeAll(migrated)
+    }
+
     private fun toJson(config: FrpcConfig) = JSONObject().apply {
         put("id", config.id)
         put("name", config.name)
-        put("serverAddr", config.serverAddr)
-        put("serverPort", config.serverPort)
-        put("authToken", config.authToken ?: JSONObject.NULL)
+        put("serverId", config.serverId ?: JSONObject.NULL)
         put("secretKey", config.secretKey)
         put("serverName", config.serverName)
         put("bindPort", config.bindPort)
     }
 
     private fun fromJson(json: JSONObject): FrpcConfig? {
-        val serverAddr = json.optString("serverAddr").takeIf { it.isNotEmpty() } ?: return null
         val serverName = json.optString("serverName").takeIf { it.isNotEmpty() } ?: return null
         return FrpcConfig(
             id = json.optString("id").ifEmpty { serverName },
             name = json.optString("name"),
-            serverAddr = serverAddr,
-            serverPort = json.optInt("serverPort", 7000),
-            authToken = if (json.isNull("authToken")) {
+            serverId = if (json.isNull("serverId")) {
                 null
             } else {
-                json.optString("authToken").takeIf { it.isNotEmpty() }
+                json.optString("serverId").takeIf { it.isNotEmpty() }
             },
             secretKey = json.optString("secretKey"),
             serverName = serverName,

@@ -80,6 +80,7 @@
     </plurals>
     <string name="tunnel_notification_partial">%1$d/%2$d tunnels connected</string>
     <string name="tunnel_error_not_executable">frpc binary is not executable: %1$s</string>
+    <string name="tunnel_error_no_server">This tunnel has no frps server selected, or the one it referenced was deleted. Pick a server in the tunnel settings.</string>
     <string name="tunnel_error_gave_up">Exit code %1$d, gave up after %2$d retries</string>
     <string name="tunnel_gate_failed">Tunnel “%1$s” failed to start: %2$s</string>
     <string name="tunnel_gate_timeout">Tunnel “%1$s” timed out while starting</string>
@@ -327,4 +328,14 @@
     <string name="startup_notifications_detail">A tunnel running in the background keeps an ongoing notification. Without it you cannot see whether the tunnel is up, nor jump back to the tunnel page from the shade.</string>
     <string name="startup_battery">Ignore battery optimisation</string>
     <string name="startup_battery_detail">Without it, the system may kill frpc once the screen has been off or the app backgrounded for a while, dropping the tunnel and the terminal (the remote tmux session survives, so reconnecting resumes it).</string>
+    <string name="tunnel_hint_server">frps server</string>
+    <string name="tunnel_action_new_server">New server</string>
+    <string name="tunnel_action_edit_server">Edit server</string>
+    <string name="tunnel_server_empty">No server yet. Tap "New server" to add the frps address and token.</string>
+    <string name="tunnel_server_pick">Pick a server</string>
+    <string name="tunnel_error_pick_server_first">Pick an frps server first (tap "New server" if there is none)</string>
+    <string name="server_title_new">New frps server</string>
+    <string name="server_title_edit">Edit frps server</string>
+    <string name="server_hint_name">Name (optional)</string>
+    <string name="server_error_fields">Address and port are required</string>
 </resources>

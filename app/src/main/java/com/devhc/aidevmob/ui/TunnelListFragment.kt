@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.devhc.aidevmob.databinding.FragmentTunnelListBinding
 import com.devhc.aidevmob.frp.FrpcConfig
 import com.devhc.aidevmob.frp.FrpcConfigStore
+import com.devhc.aidevmob.frp.FrpsServerStore
 import com.devhc.aidevmob.frp.FrpcRuntime
 import com.devhc.aidevmob.frp.FrpcVisitorService
 
@@ -24,6 +25,7 @@ class TunnelListFragment : Fragment() {
     private val binding get() = _binding!!
 
     private lateinit var store: FrpcConfigStore
+    private lateinit var serverStore: FrpsServerStore
     private lateinit var adapter: TunnelAdapter
 
     private val notificationPermissionLauncher =
@@ -43,6 +45,7 @@ class TunnelListFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         store = FrpcConfigStore(requireContext().applicationContext)
+        serverStore = FrpsServerStore(requireContext().applicationContext)
 
         adapter = TunnelAdapter(onToggle = ::toggleTunnel, onEdit = ::editTunnel)
         binding.recyclerTunnels.layoutManager = LinearLayoutManager(requireContext())
@@ -76,7 +79,9 @@ class TunnelListFragment : Fragment() {
     private fun refresh() {
         if (_binding == null) return
         val tunnels = store.list()
-        adapter.submit(tunnels)
+        // Resolved here rather than stored on the tunnel, so renaming a server updates every row.
+        val servers = serverStore.list().associateBy { it.id }
+        adapter.submit(tunnels.map { TunnelAdapter.Row(it, servers[it.serverId]) })
         binding.textEmpty.visibility = if (tunnels.isEmpty()) View.VISIBLE else View.GONE
     }
 

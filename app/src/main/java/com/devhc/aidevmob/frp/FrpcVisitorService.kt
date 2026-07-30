@@ -75,7 +75,18 @@ class FrpcVisitorService : Service() {
         val config = tunnel.config
         FrpcRuntime.update(config.id, FrpcRuntime.State.STARTING, bindPort = config.bindPort)
 
-        val configFile = writeConfigFile(config)
+        // The endpoint lives on the server record now; without it there is nothing to dial.
+        val server = FrpsServerStore(applicationContext).get(config.serverId)
+        if (server == null) {
+            FrpcRuntime.update(
+                config.id, FrpcRuntime.State.ERROR,
+                error = getString(R.string.tunnel_error_no_server)
+            )
+            updateNotification()
+            return
+        }
+
+        val configFile = writeConfigFile(config, server)
         val binaryPath = File(applicationInfo.nativeLibraryDir, "libfrpc.so")
         if (!binaryPath.canExecute()) {
             FrpcRuntime.update(
@@ -160,13 +171,19 @@ class FrpcVisitorService : Service() {
         tunnels.keys.toList().forEach(::stopTunnel)
     }
 
-    private fun writeConfigFile(config: FrpcConfig): File {
+    /**
+     * One config file per visitor, each with a single `[[visitors]]` block, so tunnels keep starting and
+     * stopping independently. Visitors sharing a server could instead be merged into one config (and one
+     * frpc process), but stopping one of them would then mean restarting the process and cutting the
+     * others' live sessions.
+     */
+    private fun writeConfigFile(config: FrpcConfig, server: FrpsServer): File {
         val builder = StringBuilder()
-        builder.appendLine("serverAddr = \"${escapeToml(config.serverAddr)}\"")
-        builder.appendLine("serverPort = ${config.serverPort}")
-        if (!config.authToken.isNullOrBlank()) {
+        builder.appendLine("serverAddr = \"${escapeToml(server.serverAddr)}\"")
+        builder.appendLine("serverPort = ${server.serverPort}")
+        if (!server.authToken.isNullOrBlank()) {
             builder.appendLine("auth.method = \"token\"")
-            builder.appendLine("auth.token = \"${escapeToml(config.authToken)}\"")
+            builder.appendLine("auth.token = \"${escapeToml(server.authToken)}\"")
         }
         builder.appendLine()
         builder.appendLine("[[visitors]]")

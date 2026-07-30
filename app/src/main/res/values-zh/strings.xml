@@ -71,6 +71,7 @@
     </plurals>
     <string name="tunnel_notification_partial">%1$d/%2$d 条隧道已连接</string>
     <string name="tunnel_error_not_executable">frpc 二进制不可执行：%1$s</string>
+    <string name="tunnel_error_no_server">这条隧道没有选择 frps 服务器，或者原来关联的服务器已被删除。请在隧道设置里选一个。</string>
     <string name="tunnel_error_gave_up">退出码 %1$d，已重试 %2$d 次，停止重试</string>
     <string name="tunnel_gate_failed">隧道「%1$s」启动失败：%2$s</string>
     <string name="tunnel_gate_timeout">隧道「%1$s」启动超时</string>
@@ -314,4 +315,14 @@
     <string name="startup_notifications_detail">隧道在后台运行时会有一条常驻通知。不开的话看不到隧道有没有连上，也没法从通知栏点回隧道页面。</string>
     <string name="startup_battery">忽略电池优化</string>
     <string name="startup_battery_detail">不开的话，息屏或切到后台一段时间后系统可能会杀掉 frpc 进程，隧道断开、终端掉线（远端 tmux 会话还在，重连能续上）。</string>
+    <string name="tunnel_hint_server">frps 服务器</string>
+    <string name="tunnel_action_new_server">新建服务器</string>
+    <string name="tunnel_action_edit_server">编辑服务器</string>
+    <string name="tunnel_server_empty">还没有服务器，点「新建服务器」填 frps 地址和 token</string>
+    <string name="tunnel_server_pick">请选择一个服务器</string>
+    <string name="tunnel_error_pick_server_first">请先选择 frps 服务器（没有的话点「新建服务器」）</string>
+    <string name="server_title_new">新建 frps 服务器</string>
+    <string name="server_title_edit">编辑 frps 服务器</string>
+    <string name="server_hint_name">名称（可选）</string>
+    <string name="server_error_fields">地址和端口必填</string>
 </resources>

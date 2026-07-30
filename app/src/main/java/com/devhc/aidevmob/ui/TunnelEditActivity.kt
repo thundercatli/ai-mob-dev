@@ -12,9 +12,13 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.devhc.aidevmob.R
 import com.devhc.aidevmob.databinding.ActivityTunnelEditBinding
+import com.devhc.aidevmob.databinding.DialogFrpsServerBinding
 import com.devhc.aidevmob.frp.FrpcConfig
 import com.devhc.aidevmob.frp.FrpcConfigStore
 import com.devhc.aidevmob.frp.FrpcVisitorService
+import com.devhc.aidevmob.frp.FrpsServer
+import com.devhc.aidevmob.frp.FrpsServerStore
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import java.util.UUID
 
 /** Creates a new frpc tunnel profile, or edits an existing one identified by [EXTRA_TUNNEL_ID]. */
@@ -22,8 +26,13 @@ class TunnelEditActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityTunnelEditBinding
     private lateinit var store: FrpcConfigStore
+    private lateinit var serverStore: FrpsServerStore
 
     private var existing: FrpcConfig? = null
+
+    /** Servers offered in the dropdown, in the order they are listed. */
+    private var servers: List<FrpsServer> = emptyList()
+    private var selectedServerId: String? = null
 
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -34,6 +43,7 @@ class TunnelEditActivity : AppCompatActivity() {
         setContentView(binding.root)
         applyContentInsets(binding.root)
         store = FrpcConfigStore(applicationContext)
+        serverStore = FrpsServerStore(applicationContext)
 
         existing = intent.getStringExtra(EXTRA_TUNNEL_ID)?.let { store.get(it) }
         val duplicateSource = intent.getStringExtra(EXTRA_DUPLICATE_FROM_ID)?.let { store.get(it) }
@@ -78,6 +88,14 @@ class TunnelEditActivity : AppCompatActivity() {
             finish()
         }
 
+        binding.buttonNewServer.setOnClickListener { editServer(null) }
+        binding.buttonEditServer.setOnClickListener {
+            val server = selectedServer()
+            if (server == null) showError(getString(R.string.tunnel_error_pick_server_first))
+            else editServer(server)
+        }
+        reloadServers()
+
         when {
             existing != null -> prefill(existing!!)
             duplicateSource != null -> {
@@ -106,11 +124,76 @@ class TunnelEditActivity : AppCompatActivity() {
         return candidate
     }
 
+    /**
+     * Refills the server dropdown; called again after the server dialog so a record created mid-flow is
+     * immediately selectable.
+     */
+    private fun reloadServers(preferId: String? = selectedServerId) {
+        servers = serverStore.list()
+        binding.dropdownServer.setSimpleItems(servers.map { it.displayName }.toTypedArray())
+        binding.dropdownServer.setOnItemClickListener { _, _, position, _ ->
+            applyServerSelection(servers.getOrNull(position))
+        }
+        // Falls back to the only server there is: with one endpoint, picking it is never a choice.
+        applyServerSelection(servers.firstOrNull { it.id == preferId } ?: servers.singleOrNull())
+    }
+
+    private fun applyServerSelection(server: FrpsServer?) {
+        selectedServerId = server?.id
+        binding.dropdownServer.setText(server?.displayName ?: "", false)
+        binding.buttonEditServer.isEnabled = server != null
+        binding.textServerDetail.text = when {
+            server != null -> server.subtitle
+            servers.isEmpty() -> getString(R.string.tunnel_server_empty)
+            else -> getString(R.string.tunnel_server_pick)
+        }
+    }
+
+    private fun selectedServer(): FrpsServer? = servers.firstOrNull { it.id == selectedServerId }
+
+    /** Creates or edits an frps record inline, so managing endpoints never leaves this screen. */
+    private fun editServer(server: FrpsServer?) {
+        val dialogBinding = DialogFrpsServerBinding.inflate(layoutInflater)
+        server?.let {
+            dialogBinding.editServerLabel.setText(it.name)
+            dialogBinding.editServerAddr.setText(it.serverAddr)
+            dialogBinding.editServerPort.setText(it.serverPort.toString())
+            dialogBinding.editAuthToken.setText(it.authToken ?: "")
+        }
+
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(if (server == null) R.string.server_title_new else R.string.server_title_edit)
+            .setView(dialogBinding.root)
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(R.string.action_save, null)
+            .create()
+
+        dialog.show()
+        // Bound after show() so a validation failure can keep the dialog open.
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val addr = dialogBinding.editServerAddr.text?.toString()?.trim().orEmpty()
+            val port = dialogBinding.editServerPort.text?.toString()?.trim()?.toIntOrNull()
+            if (addr.isEmpty() || port == null) {
+                dialogBinding.textServerError.visibility = View.VISIBLE
+                dialogBinding.textServerError.setText(R.string.server_error_fields)
+                return@setOnClickListener
+            }
+            val saved = FrpsServer(
+                id = server?.id ?: UUID.randomUUID().toString(),
+                name = dialogBinding.editServerLabel.text?.toString()?.trim().orEmpty(),
+                serverAddr = addr,
+                serverPort = port,
+                authToken = dialogBinding.editAuthToken.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+            )
+            serverStore.upsert(saved)
+            reloadServers(preferId = saved.id)
+            dialog.dismiss()
+        }
+    }
+
     private fun prefill(config: FrpcConfig) {
         binding.editName.setText(config.name)
-        binding.editServerAddr.setText(config.serverAddr)
-        binding.editServerPort.setText(config.serverPort.toString())
-        binding.editAuthToken.setText(config.authToken ?: "")
+        reloadServers(preferId = config.serverId)
         binding.editServerName.setText(config.serverName)
         binding.editSecretKey.setText(config.secretKey)
         binding.editBindPort.setText(config.bindPort.toString())
@@ -119,16 +202,16 @@ class TunnelEditActivity : AppCompatActivity() {
     private fun save(): FrpcConfig? {
         binding.textError.visibility = View.GONE
 
-        val serverAddr = binding.editServerAddr.text?.toString()?.trim().orEmpty()
-        val serverPort = binding.editServerPort.text?.toString()?.trim()?.toIntOrNull()
         val serverName = binding.editServerName.text?.toString()?.trim().orEmpty()
         val secretKey = binding.editSecretKey.text?.toString()?.trim().orEmpty()
         val bindPort = binding.editBindPort.text?.toString()?.trim()?.toIntOrNull()
-        val authToken = binding.editAuthToken.text?.toString()?.trim()
 
-        if (serverAddr.isEmpty() || serverPort == null || serverName.isEmpty() ||
-            secretKey.isEmpty() || bindPort == null
-        ) {
+        val server = selectedServer()
+        if (server == null) {
+            showError(getString(R.string.tunnel_error_pick_server_first))
+            return null
+        }
+        if (serverName.isEmpty() || secretKey.isEmpty() || bindPort == null) {
             showError(getString(R.string.tunnel_error_fields))
             return null
         }
@@ -143,9 +226,7 @@ class TunnelEditActivity : AppCompatActivity() {
         val config = FrpcConfig(
             id = id,
             name = binding.editName.text?.toString()?.trim().orEmpty(),
-            serverAddr = serverAddr,
-            serverPort = serverPort,
-            authToken = authToken?.takeIf { it.isNotEmpty() },
+            serverId = server.id,
             secretKey = secretKey,
             serverName = serverName,
             bindPort = bindPort
