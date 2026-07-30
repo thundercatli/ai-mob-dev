@@ -12,21 +12,27 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.pm.PackageInfoCompat
 import androidx.core.os.LocaleListCompat
 import androidx.fragment.app.Fragment
 import com.devhc.aidevmob.R
 import com.devhc.aidevmob.databinding.FragmentSettingsBinding
+import com.devhc.aidevmob.databinding.DialogPassphraseBinding
 import com.devhc.aidevmob.databinding.ItemEnvCheckBinding
 import com.devhc.aidevmob.settings.ApkDownloader
 import com.devhc.aidevmob.settings.AppSettings
+import com.devhc.aidevmob.settings.ConfigBackup
 import com.devhc.aidevmob.settings.EnvironmentCheck
 import com.devhc.aidevmob.settings.UpdateChecker
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import java.io.File
 import java.security.MessageDigest
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 import kotlin.concurrent.thread
 
@@ -43,6 +49,20 @@ class SettingsFragment : Fragment() {
     private val binding get() = _binding!!
 
     private lateinit var settings: AppSettings
+
+    /**
+     * Held between asking for the export passphrase and the file picker coming back with a destination.
+     * Cleared as soon as it is used.
+     */
+    private var pendingPassphrase: CharArray? = null
+
+    private val createBackupFile = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri -> if (uri != null) exportTo(uri) else pendingPassphrase = null }
+
+    private val openBackupFile = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri -> uri?.let(::importFrom) }
 
     /** Guards against queueing several checks by tapping the button repeatedly. */
     private var checking = false
@@ -65,6 +85,7 @@ class SettingsFragment : Fragment() {
         binding.buttonRecheck.setOnClickListener { runEnvironmentCheck() }
         setUpGlobalSettings()
         setUpUpdateCheck()
+        setUpBackup()
         showAbout()
         binding.textHelp.text = helpText()
 
@@ -417,6 +438,150 @@ class SettingsFragment : Fragment() {
 
     // ---------------------------------------------------------------- about / help
 
+    // ---------------------------------------------------------------- encrypted backup
+
+    private fun setUpBackup() {
+        binding.textBackupState.setText(R.string.backup_intro)
+        binding.buttonExportBackup.setOnClickListener {
+            askPassphrase(confirm = true, hint = getString(R.string.backup_export_hint)) { passphrase ->
+                pendingPassphrase = passphrase
+                // Timestamped so successive exports don't silently overwrite one another.
+                createBackupFile.launch("aidevmob-backup-${backupTimestamp()}.json")
+            }
+        }
+        binding.buttonImportBackup.setOnClickListener {
+            openBackupFile.launch(arrayOf("application/json", "application/octet-stream", "*/*"))
+        }
+    }
+
+    /**
+     * Both directions run off the main thread: deriving the key is deliberately expensive (210k PBKDF2
+     * rounds, measured at ~0.3s on a laptop and slower on a phone), and the file itself is read or
+     * written through a content provider.
+     */
+    private fun exportTo(uri: Uri) {
+        val passphrase = pendingPassphrase ?: return
+        pendingPassphrase = null
+        val appContext = requireContext().applicationContext
+        val resolver = requireContext().contentResolver
+        setBackupBusy(true, R.string.backup_export_running)
+
+        thread(name = "backup-export") {
+            val result = runCatching {
+                val bytes = ConfigBackup.export(appContext, passphrase)
+                resolver.openOutputStream(uri)?.use { it.write(bytes) }
+                    ?: error("cannot open $uri for writing")
+                bytes.size
+            }
+            passphrase.fill('\u0000')
+            view?.post {
+                if (_binding == null) return@post
+                setBackupBusy(false, null)
+                result
+                    .onSuccess { size ->
+                        binding.textBackupState.text =
+                            getString(R.string.backup_export_done, size / 1024 + 1)
+                    }
+                    .onFailure { error ->
+                        binding.textBackupState.text = getString(
+                            R.string.backup_export_failed,
+                            error.message ?: error::class.java.simpleName
+                        )
+                    }
+            }
+        }
+    }
+
+    private fun setBackupBusy(busy: Boolean, message: Int?) {
+        binding.buttonExportBackup.isEnabled = !busy
+        binding.buttonImportBackup.isEnabled = !busy
+        message?.let { binding.textBackupState.setText(it) }
+    }
+
+    private fun importFrom(uri: Uri) {
+        askPassphrase(confirm = false, hint = getString(R.string.backup_import_hint)) { passphrase ->
+            val appContext = requireContext().applicationContext
+            val resolver = requireContext().contentResolver
+            setBackupBusy(true, R.string.backup_import_running)
+
+            thread(name = "backup-import") {
+                val result = runCatching {
+                    val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
+                        ?: error("cannot open $uri for reading")
+                    ConfigBackup.restore(appContext, bytes, passphrase)
+                }
+                passphrase.fill('\u0000')
+                view?.post {
+                    if (_binding == null) return@post
+                    setBackupBusy(false, null)
+                    result
+                        .onSuccess { restored ->
+                            binding.textBackupState.text = getString(
+                                R.string.backup_import_done,
+                                restored.connections, restored.credentials,
+                                restored.tunnels, restored.servers
+                            )
+                            // Restored settings only reach the terminal on its next launch, but these
+                            // switches would otherwise keep showing the pre-import values.
+                            setUpGlobalSettings()
+                            runEnvironmentCheck()
+                        }
+                        .onFailure { error ->
+                            binding.textBackupState.text = when (error) {
+                                is ConfigBackup.BadPassphraseException ->
+                                    getString(R.string.backup_error_passphrase)
+                                is ConfigBackup.BadFormatException ->
+                                    getString(R.string.backup_error_format, error.message.orEmpty())
+                                else -> getString(
+                                    R.string.backup_import_failed,
+                                    error.message ?: error::class.java.simpleName
+                                )
+                            }
+                        }
+                }
+            }
+        }
+    }
+
+    /**
+     * Asks for the passphrase that protects the backup file. Export asks twice: a typo there cannot be
+     * detected later - the file simply never opens again.
+     */
+    private fun askPassphrase(confirm: Boolean, hint: String, onEntered: (CharArray) -> Unit) {
+        val dialogBinding = DialogPassphraseBinding.inflate(layoutInflater)
+        dialogBinding.textPassphraseHint.text = hint
+        dialogBinding.layoutPassphraseConfirm.visibility = if (confirm) View.VISIBLE else View.GONE
+
+        val dialog = MaterialAlertDialogBuilder(requireContext())
+            .setTitle(if (confirm) R.string.backup_action_export else R.string.backup_action_import)
+            .setView(dialogBinding.root)
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(R.string.action_confirm, null)
+            .create()
+
+        dialog.show()
+        // Bound after show() so validation can keep the dialog open.
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val entered = dialogBinding.editPassphrase.text?.toString().orEmpty()
+            val repeated = dialogBinding.editPassphraseConfirm.text?.toString().orEmpty()
+            val problem = when {
+                entered.length < MIN_PASSPHRASE -> getString(R.string.backup_error_short, MIN_PASSPHRASE)
+                confirm && entered != repeated -> getString(R.string.backup_error_mismatch)
+                else -> null
+            }
+            if (problem != null) {
+                dialogBinding.textPassphraseError.visibility = View.VISIBLE
+                dialogBinding.textPassphraseError.text = problem
+                return@setOnClickListener
+            }
+            dialog.dismiss()
+            onEntered(entered.toCharArray())
+        }
+    }
+
+    private fun backupTimestamp(): String =
+        SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())
+
     private fun showAbout() {
         val context = requireContext()
         binding.textAbout.text = buildString {
@@ -498,6 +663,8 @@ class SettingsFragment : Fragment() {
     ).joinToString("\n\n") { getString(it) }
 
     private companion object {
+        const val MIN_PASSPHRASE = 8
+
         /** Offered in the language picker; must match res/xml/locales_config.xml. */
         val SUPPORTED_LANGUAGES = listOf("", "en", "zh-CN")
     }

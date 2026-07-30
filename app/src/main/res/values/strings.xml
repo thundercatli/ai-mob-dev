@@ -338,4 +338,23 @@
     <string name="server_title_edit">Edit frps server</string>
     <string name="server_hint_name">Name (optional)</string>
     <string name="server_error_fields">Address and port are required</string>
+    <string name="settings_section_backup">Config backup</string>
+    <string name="backup_intro">Uninstalling deletes every setting and its encryption key. Export an encrypted copy to survive a reinstall or a new phone.</string>
+    <string name="backup_action_export">Export</string>
+    <string name="backup_action_import">Import</string>
+    <string name="backup_hint_passphrase">Passphrase</string>
+    <string name="backup_hint_passphrase_confirm">Repeat passphrase</string>
+    <string name="backup_export_hint">This passphrase is the only way to open the backup — it is not stored anywhere and cannot be recovered.</string>
+    <string name="backup_import_hint">Enter the passphrase this backup was exported with.</string>
+    <string name="backup_export_done">Exported (%1$d KB). Keep the file and its passphrase somewhere safe.</string>
+    <string name="backup_export_failed">Export failed: %1$s</string>
+    <string name="backup_import_done">Restored %1$d connections, %2$d credentials, %3$d tunnels, %4$d servers.</string>
+    <string name="backup_import_failed">Import failed: %1$s</string>
+    <string name="backup_error_passphrase">Wrong passphrase, or the file has been modified.</string>
+    <string name="backup_error_format">Not a usable backup: %1$s</string>
+    <string name="backup_error_short">Use at least %1$d characters</string>
+    <string name="backup_error_mismatch">The two passphrases differ</string>
+    <string name="action_confirm">Confirm</string>
+    <string name="backup_export_running">Encrypting and writing the backup…</string>
+    <string name="backup_import_running">Reading and decrypting the backup…</string>
 </resources>

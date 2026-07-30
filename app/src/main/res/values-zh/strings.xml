@@ -325,4 +325,23 @@
     <string name="server_title_edit">编辑 frps 服务器</string>
     <string name="server_hint_name">名称（可选）</string>
     <string name="server_error_fields">地址和端口必填</string>
+    <string name="settings_section_backup">配置备份</string>
+    <string name="backup_intro">卸载会连同数据和密钥一起删除。导出一份加密备份，重装或换机后可以恢复。</string>
+    <string name="backup_action_export">导出备份</string>
+    <string name="backup_action_import">导入备份</string>
+    <string name="backup_hint_passphrase">口令</string>
+    <string name="backup_hint_passphrase_confirm">再输一次</string>
+    <string name="backup_export_hint">这个口令是打开备份的唯一凭据，任何地方都不会保存，丢了就打不开了。</string>
+    <string name="backup_import_hint">输入导出这份备份时设置的口令。</string>
+    <string name="backup_export_done">已导出（约 %1$d KB）。文件和口令请分开妥善保存。</string>
+    <string name="backup_export_failed">导出失败：%1$s</string>
+    <string name="backup_import_done">已恢复 %1$d 个连接、%2$d 份认证、%3$d 条隧道、%4$d 台服务器。</string>
+    <string name="backup_import_failed">导入失败：%1$s</string>
+    <string name="backup_error_passphrase">口令不对，或者文件被改动过。</string>
+    <string name="backup_error_format">不是可用的备份文件：%1$s</string>
+    <string name="backup_error_short">口令至少 %1$d 位</string>
+    <string name="backup_error_mismatch">两次输入不一致</string>
+    <string name="action_confirm">确定</string>
+    <string name="backup_export_running">正在加密并写入备份…</string>
+    <string name="backup_import_running">正在读取并解密备份…</string>
 </resources>
