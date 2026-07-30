@@ -344,4 +344,14 @@
     <string name="action_confirm">确定</string>
     <string name="backup_export_running">正在加密并写入备份…</string>
     <string name="backup_import_running">正在读取并解密备份…</string>
+    <string name="terminal_menu_tmux_new_window">tmux：新建窗口</string>
+    <string name="terminal_menu_tmux_next_window">tmux：下一个窗口</string>
+    <string name="terminal_menu_tmux_prev_window">tmux：上一个窗口</string>
+    <string name="terminal_menu_tmux_window_list">tmux：窗口列表</string>
+    <string name="terminal_menu_tmux_rename_window">tmux：重命名窗口</string>
+    <string name="terminal_tmux_unavailable">这个连接没有使用 tmux，没有窗口可切换</string>
+    <string name="settings_tmux_prefix">tmux 前缀键</string>
+    <string name="settings_tmux_prefix_detail">tmux 的快捷键都是先按这个键再按字母。tmux.conf 里改过前缀的话在这里同步。</string>
+    <string name="settings_swipe_windows">滑动切换 tmux 窗口</string>
+    <string name="settings_swipe_windows_detail">在终端上左右滑动即可切到下一个/上一个窗口</string>
 </resources>

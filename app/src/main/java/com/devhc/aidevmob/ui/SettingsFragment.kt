@@ -211,6 +211,19 @@ class SettingsFragment : Fragment() {
         binding.buttonFontSmaller.setOnClickListener { adjustFontSize(-1) }
         binding.buttonFontBigger.setOnClickListener { adjustFontSize(+1) }
 
+        // Ctrl-A..Ctrl-Z: tmux only accepts a letter as its prefix, and remaps to Ctrl-A are common.
+        val prefixLabels = ('a'..'z').map { "Ctrl-${it.uppercaseChar()}" }
+        binding.dropdownTmuxPrefix.setSimpleItems(prefixLabels.toTypedArray())
+        binding.dropdownTmuxPrefix.setText(prefixLabels[settings.tmuxPrefix - 'a'], false)
+        binding.dropdownTmuxPrefix.setOnItemClickListener { _, _, position, _ ->
+            settings.tmuxPrefix = 'a' + position
+        }
+
+        binding.switchSwipeWindows.isChecked = settings.swipeSwitchesWindows
+        binding.switchSwipeWindows.setOnCheckedChangeListener { _, checked ->
+            settings.swipeSwitchesWindows = checked
+        }
+
         binding.switchKeepScreenOn.isChecked = settings.keepScreenOn
         binding.switchKeepScreenOn.setOnCheckedChangeListener { _, checked ->
             settings.keepScreenOn = checked

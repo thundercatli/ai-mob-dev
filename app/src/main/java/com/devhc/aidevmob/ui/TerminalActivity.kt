@@ -31,6 +31,7 @@ import com.devhc.aidevmob.ssh.TofuHostKeyVerifier
 import com.termux.terminal.KeyHandler
 import com.termux.terminal.TerminalSession
 import kotlin.concurrent.thread
+import kotlin.math.abs
 
 class TerminalActivity : AppCompatActivity() {
 
@@ -42,6 +43,15 @@ class TerminalActivity : AppCompatActivity() {
 
     private var connector: SshTerminalConnector? = null
     private var session: TerminalSession? = null
+
+    /** Swipe tracking for the tmux window gesture; see dispatchTouchEvent. */
+    private var swipeStartX = 0f
+    private var swipeStartY = 0f
+    private var swipeStartTime = 0L
+    private var swipePointers = 0
+    private var swipeSwitchesWindows = true
+    private var swipeThresholdPx = 0f
+    private var swipeStartedOnTerminal = false
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var reconnectAttempts = 0
@@ -77,6 +87,8 @@ class TerminalActivity : AppCompatActivity() {
 
         viewClient = AppTerminalViewClient(onRequestKeyboard = ::showKeyboard)
         val settings = AppSettings(applicationContext)
+        swipeSwitchesWindows = settings.swipeSwitchesWindows
+        swipeThresholdPx = dpToPx(SWIPE_MIN_DP.toFloat()).toFloat()
         binding.terminalView.setTextSize(spToPx(settings.terminalFontSize.toFloat()))
         // Long-running commands shouldn't be interrupted by the lock screen when the user asked for it.
         if (settings.keepScreenOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -167,6 +179,11 @@ class TerminalActivity : AppCompatActivity() {
             showKeyboard()
             true
         }
+        R.id.actionTmuxNewWindow -> sendTmuxKey('c')
+        R.id.actionTmuxNextWindow -> sendTmuxKey('n')
+        R.id.actionTmuxPrevWindow -> sendTmuxKey('p')
+        R.id.actionTmuxWindowList -> sendTmuxKey('w')
+        R.id.actionTmuxRenameWindow -> sendTmuxKey(',')
         R.id.actionReconnect -> {
             reconnectNow()
             true
@@ -263,6 +280,13 @@ class TerminalActivity : AppCompatActivity() {
         addRepeatableKey("↓") { sendKeyCode(KeyEvent.KEYCODE_DPAD_DOWN) }
         addRepeatableKey("↑") { sendKeyCode(KeyEvent.KEYCODE_DPAD_UP) }
         addRepeatableKey("→") { sendKeyCode(KeyEvent.KEYCODE_DPAD_RIGHT) }
+        // Only for sessions that actually have windows: in a plain shell these would type the prefix
+        // as a control character, and the row is crowded enough without dead keys.
+        if (config.tmuxSession.isNotBlank()) {
+            addKey("W+") { sendTmuxKey('c') }
+            addKey("◀W") { sendTmuxKey('p') }
+            addKey("W▶") { sendTmuxKey('n') }
+        }
         addKey("TAB") { sendBytes(byteArrayOf(9)) }
         // Back-tab (terminfo kcbt), what shift+tab produces on a real keyboard.
         addKey("S-TAB") { sendKeyCode(KeyEvent.KEYCODE_TAB, KeyHandler.KEYMOD_SHIFT) }
@@ -359,6 +383,70 @@ class TerminalActivity : AppCompatActivity() {
         binding.terminalView.handleKeyCode(keyCode, keyMod)
     }
 
+    /**
+     * Sends tmux's prefix followed by [key], which is how every tmux binding is invoked. The prefix is
+     * whatever the user configured (Ctrl-B unless they remapped it, commonly to Ctrl-A).
+     *
+     * Refuses when this profile isn't attached to a tmux session: the same bytes would otherwise land
+     * in a plain shell as a stray control character followed by a letter.
+     */
+    private fun sendTmuxKey(key: Char): Boolean {
+        if (config.tmuxSession.isBlank()) {
+            Toast.makeText(this, R.string.terminal_tmux_unavailable, Toast.LENGTH_SHORT).show()
+            return true
+        }
+        val prefix = AppSettings(applicationContext).tmuxPrefix
+        // Ctrl-<letter> is the letter's position in the alphabet: Ctrl-A is 1, Ctrl-B is 2.
+        val control = (prefix - 'a' + 1).toByte()
+        sendBytes(byteArrayOf(control))
+        sendString(key.toString())
+        return true
+    }
+
+    /**
+     * Turns a horizontal drag across the terminal into next/previous window. Observed rather than
+     * consumed - the terminal keeps its own scrolling and selection behaviour, and a horizontal drag
+     * means nothing to it anyway.
+     */
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                swipeStartX = event.x
+                swipeStartY = event.y
+                swipeStartTime = event.eventTime
+                swipePointers = 1
+                // The extra-keys row is a HorizontalScrollView: scrolling it sideways must not be
+                // mistaken for a swipe across the terminal.
+                swipeStartedOnTerminal = isInsideTerminal(event.rawX, event.rawY)
+            }
+            // Pinch-to-zoom starts as a drag; once a second finger lands, this is not a swipe.
+            MotionEvent.ACTION_POINTER_DOWN -> swipePointers += 1
+            MotionEvent.ACTION_UP -> if (swipePointers == 1) {
+                val dx = event.x - swipeStartX
+                val dy = event.y - swipeStartY
+                val elapsed = event.eventTime - swipeStartTime
+                val horizontal = abs(dx) >= swipeThresholdPx && abs(dx) > SWIPE_AXIS_RATIO * abs(dy)
+                if (horizontal && elapsed <= SWIPE_MAX_MS && swipeSwitchesWindows &&
+                    swipeStartedOnTerminal && config.tmuxSession.isNotBlank() &&
+                    // Dragging a selection handle is also a one-finger horizontal drag.
+                    !binding.terminalView.isSelectingText
+                ) {
+                    // Dragging left moves forward, matching how pages advance elsewhere.
+                    sendTmuxKey(if (dx < 0) 'n' else 'p')
+                }
+            }
+        }
+        return super.dispatchTouchEvent(event)
+    }
+
+    /** True when a screen-space point falls inside the terminal view. */
+    private fun isInsideTerminal(rawX: Float, rawY: Float): Boolean {
+        val location = IntArray(2)
+        binding.terminalView.getLocationOnScreen(location)
+        return rawX >= location[0] && rawX <= location[0] + binding.terminalView.width &&
+            rawY >= location[1] && rawY <= location[1] + binding.terminalView.height
+    }
+
     private fun sendBytes(bytes: ByteArray) {
         session?.write(bytes, 0, bytes.size)
     }
@@ -399,6 +487,9 @@ class TerminalActivity : AppCompatActivity() {
         private const val MAX_RECONNECT_ATTEMPTS = 5
         private const val TUNNEL_WAIT_TIMEOUT_MS = 20_000L
         private const val TUNNEL_POLL_INTERVAL_MS = 300L
+        private const val SWIPE_MIN_DP = 72
+        private const val SWIPE_MAX_MS = 700L
+        private const val SWIPE_AXIS_RATIO = 1.8f
         private const val KEY_REPEAT_DELAY_MS = 400L
         private const val KEY_REPEAT_INTERVAL_MS = 60L
 

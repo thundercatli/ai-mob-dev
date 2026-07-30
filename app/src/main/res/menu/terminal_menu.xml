@@ -7,6 +7,26 @@
         android:title="@string/terminal_menu_keyboard"
         app:showAsAction="ifRoom" />
     <item
+        android:id="@+id/actionTmuxNewWindow"
+        android:title="@string/terminal_menu_tmux_new_window"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/actionTmuxNextWindow"
+        android:title="@string/terminal_menu_tmux_next_window"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/actionTmuxPrevWindow"
+        android:title="@string/terminal_menu_tmux_prev_window"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/actionTmuxWindowList"
+        android:title="@string/terminal_menu_tmux_window_list"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/actionTmuxRenameWindow"
+        android:title="@string/terminal_menu_tmux_rename_window"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/actionReconnect"
         android:title="@string/terminal_menu_reconnect"
         app:showAsAction="never" />

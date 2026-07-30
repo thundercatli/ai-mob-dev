@@ -33,6 +33,21 @@ class AppSettings(context: Context) {
         set(value) = prefs.edit().putBoolean(KEY_KEEP_SCREEN_ON, value).apply()
 
     /**
+     * The letter of tmux's prefix key, i.e. the "b" in Ctrl-B. Stored as a letter rather than the
+     * control byte because that is how tmux.conf spells it, and remapping it to Ctrl-A is common
+     * enough that hardcoding the default would make the shortcuts useless for those setups.
+     */
+    var tmuxPrefix: Char
+        get() = prefs.getString(KEY_TMUX_PREFIX, null)?.firstOrNull()?.lowercaseChar()
+            ?.takeIf { it in 'a'..'z' } ?: DEFAULT_TMUX_PREFIX
+        set(value) = prefs.edit().putString(KEY_TMUX_PREFIX, value.lowercaseChar().toString()).apply()
+
+    /** Whether a horizontal swipe across the terminal switches tmux windows. */
+    var swipeSwitchesWindows: Boolean
+        get() = prefs.getBoolean(KEY_SWIPE_WINDOWS, true)
+        set(value) = prefs.edit().putBoolean(KEY_SWIPE_WINDOWS, value).apply()
+
+    /**
      * GitHub token used only to read the releases list. Optional: the repo is public, so this is
      * needed only to get past the anonymous rate limit.
      */
@@ -44,9 +59,12 @@ class AppSettings(context: Context) {
         const val MIN_FONT_SIZE = 8
         const val MAX_FONT_SIZE = 28
         const val DEFAULT_FONT_SIZE = 13
+        const val DEFAULT_TMUX_PREFIX = 'b'
 
         private const val KEY_FONT_SIZE = "terminalFontSize"
         private const val KEY_KEEP_SCREEN_ON = "keepScreenOn"
         private const val KEY_UPDATE_TOKEN = "updateToken"
+        private const val KEY_TMUX_PREFIX = "tmuxPrefix"
+        private const val KEY_SWIPE_WINDOWS = "swipeSwitchesWindows"
     }
 }

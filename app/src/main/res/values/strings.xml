@@ -357,4 +357,14 @@
     <string name="action_confirm">Confirm</string>
     <string name="backup_export_running">Encrypting and writing the backup…</string>
     <string name="backup_import_running">Reading and decrypting the backup…</string>
+    <string name="terminal_menu_tmux_new_window">tmux: new window</string>
+    <string name="terminal_menu_tmux_next_window">tmux: next window</string>
+    <string name="terminal_menu_tmux_prev_window">tmux: previous window</string>
+    <string name="terminal_menu_tmux_window_list">tmux: window list</string>
+    <string name="terminal_menu_tmux_rename_window">tmux: rename window</string>
+    <string name="terminal_tmux_unavailable">This connection does not use tmux, so there are no windows to switch</string>
+    <string name="settings_tmux_prefix">tmux prefix key</string>
+    <string name="settings_tmux_prefix_detail">Every tmux shortcut is sent as this key then a letter. Change it if your tmux.conf remaps the prefix.</string>
+    <string name="settings_swipe_windows">Swipe to switch tmux windows</string>
+    <string name="settings_swipe_windows_detail">Drag left or right across the terminal for the next or previous window</string>
 </resources>
