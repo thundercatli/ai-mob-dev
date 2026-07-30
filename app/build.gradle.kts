@@ -1,9 +1,24 @@
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
+
+/**
+ * Release signing is optional: it reads keystore.properties (gitignored, see
+ * keystore.example.properties) or the matching environment variables so CI can supply them as
+ * secrets. When nothing is configured the release build falls back to the debug key below, which
+ * keeps `assembleRelease` producing an installable APK instead of an unsigned one.
+ */
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) file.inputStream().use(::load)
+}
+
+fun signingValue(propertyName: String, envName: String): String? =
+    keystoreProperties.getProperty(propertyName) ?: System.getenv(envName)
 
 android {
     namespace = "com.devhc.aidevmob"
@@ -21,9 +36,23 @@ android {
         }
     }
 
+    val releaseSigningConfig = signingValue("storeFile", "STORE_FILE")
+        ?.let { path -> rootProject.file(path).takeIf { it.exists() } }
+        ?.let { keystore ->
+            signingConfigs.create("release") {
+                storeFile = keystore
+                storePassword = signingValue("storePassword", "STORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "KEY_ALIAS")
+                keyPassword = signingValue("keyPassword", "KEY_PASSWORD")
+            }
+        }
+
     buildTypes {
         release {
+            // R8 is left off on purpose: sshj and BouncyCastle resolve a lot through reflection and
+            // ServiceLoader, so shrinking needs keep rules that have not been worked out or tested yet.
             isMinifyEnabled = false
+            signingConfig = releaseSigningConfig ?: signingConfigs.getByName("debug")
         }
     }
 

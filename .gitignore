@@ -8,6 +8,11 @@ build/
 # Local SDK paths / machine-specific config
 local.properties
 
+# Signing material (see keystore.example.properties)
+keystore.properties
+*.jks
+*.keystore
+
 # The frpc binary is not checked in - regenerate it with scripts/build_frpc.sh
 # (it is packaged as a .so so Android will extract it as a native library).
 *.so
