@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/actionKeyboard"
+        android:icon="@drawable/ic_keyboard"
+        android:title="显示键盘"
+        app:showAsAction="ifRoom" />
+    <item
+        android:id="@+id/actionReconnect"
+        android:title="重新连接"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/actionDisconnect"
+        android:title="断开并返回"
+        app:showAsAction="never" />
+</menu>

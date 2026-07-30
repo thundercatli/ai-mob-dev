@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AI Dev Mobile</string>
+
+    <string name="tab_connect">连接</string>
+    <string name="tab_tunnel">隧道</string>
+
+    <!-- Used by the vendored com.termux.view.textselection classes. -->
+    <string name="paste_text">Paste</string>
+    <string name="copy_text">Copy</string>
+    <string name="text_selection_more">More…</string>
+</resources>

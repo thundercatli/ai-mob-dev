@@ -1,0 +1,23 @@
+# Build output
+build/
+.gradle/
+.kotlin/
+*.apk
+*.aab
+
+# Local SDK paths / machine-specific config
+local.properties
+
+# The frpc binary is not checked in - regenerate it with scripts/build_frpc.sh
+# (it is packaged as a .so so Android will extract it as a native library).
+*.so
+
+# IDE
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# OS
+.DS_Store
+Thumbs.db
