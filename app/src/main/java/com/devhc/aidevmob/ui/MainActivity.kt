@@ -11,6 +11,10 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
 
+    // Constructed here rather than in onCreate: it registers activity-result launchers, which has to
+    // happen before the activity is STARTED.
+    private val permissionCheck = StartupPermissionCheck(this)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -35,6 +39,8 @@ class MainActivity : AppCompatActivity() {
             }
             binding.bottomNav.selectedItemId = startTab
         }
+
+        permissionCheck.run()
     }
 
     override fun onNewIntent(intent: Intent) {
