@@ -61,37 +61,6 @@ jobs:
             echo "No STORE_FILE_BASE64 secret set; the release build will use the debug key."
           fi
 
-      # A crash in an Activity's own initialisation compiles cleanly and passes every static check,
-      # then kills the app on every launch - which is exactly how v0.2.0 and v0.2.1 shipped. The only
-      # thing that catches it is opening the app for real, so do that here, before the release step
-      # below can publish anything.
-      - name: Enable KVM for the emulator
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
-            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: Launch smoke test on an emulator
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          arch: x86_64
-          # google_apis rather than the bare image: it translates arm64, and the APK only ever ships
-          # an arm64 libfrpc.so (see the ndk abiFilters in app/build.gradle.kts).
-          target: google_apis
-          disable-animations: true
-          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
-          script: ./gradlew --no-daemon connectedDebugAndroidTest
-
-      - name: Upload smoke test report
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: smoke-test-report
-          path: app/build/reports/androidTests/connected/
-          if-no-files-found: ignore
-
       # For a tag build, report the tag (without the leading "v") as the app's version, and use the
       # run number as versionCode so it always increases across releases.
       - name: Derive version from tag
@@ -136,3 +105,40 @@ jobs:
           gh release create "$GITHUB_REF_NAME" "${{ steps.apk.outputs.path }}" \
             --title "$GITHUB_REF_NAME" \
             --generate-notes
+
+      # Opening the app on an emulator is the only thing that catches a crash in an Activity's own
+      # initialisation: it compiles cleanly, passes every static check, and then dies on every launch
+      # (v0.2.0 and v0.2.1 shipped exactly that). It runs on pull requests only, and last, so pushes
+      # to main and tag builds stay fast.
+      #
+      # Note what this deliberately gives up: a tag pushed straight to main is never smoke-tested, so
+      # nothing stops a launch-crash from being published. Reviewing releases through a PR first is
+      # what makes this check worth anything.
+      - name: Enable KVM for the emulator
+        if: github.event_name == 'pull_request'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Launch smoke test on an emulator
+        if: github.event_name == 'pull_request'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          # google_apis rather than the bare image: it translates arm64, and the APK only ever ships
+          # an arm64 libfrpc.so (see the ndk abiFilters in app/build.gradle.kts).
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect
+          script: ./gradlew --no-daemon connectedDebugAndroidTest
+
+      - name: Upload smoke test report
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-report
+          path: app/build/reports/androidTests/connected/
+          if-no-files-found: ignore
