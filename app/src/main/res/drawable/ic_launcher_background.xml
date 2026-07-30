@@ -1,9 +1,28 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- Near-black CRT slab, lit from the top-left. -->
+    <path android:pathData="M0,0 H108 V108 H0 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="0"
+                android:startY="0"
+                android:endX="108"
+                android:endY="108">
+                <item android:offset="0" android:color="#18231E" />
+                <item android:offset="1" android:color="#060908" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Faint phosphor grid, 9dp pitch: texture at a glance, invisible as individual lines. -->
     <path
-        android:fillColor="#2F6F5E"
-        android:pathData="M0,0 H108 V108 H0 Z" />
+        android:strokeColor="#00E676"
+        android:strokeWidth="0.6"
+        android:strokeAlpha="0.07"
+        android:pathData="M0,9 H108 M0,18 H108 M0,27 H108 M0,36 H108 M0,45 H108 M0,54 H108 M0,63 H108 M0,72 H108 M0,81 H108 M0,90 H108 M0,99 H108 M9,0 V108 M18,0 V108 M27,0 V108 M36,0 V108 M45,0 V108 M54,0 V108 M63,0 V108 M72,0 V108 M81,0 V108 M90,0 V108 M99,0 V108" />
 </vector>

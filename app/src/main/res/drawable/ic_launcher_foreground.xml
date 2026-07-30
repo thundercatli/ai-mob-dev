@@ -3,10 +3,49 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- A terminal window outlined in phosphor green, with a prompt and block cursor inside.
+         Everything stays inside the central 66dp circle so no launcher mask clips it. -->
+
+    <!-- Screen -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M39,46.5 L46.5,52.75 L39,59 L41.25,61.5 L51.5,52.75 L41.25,44 Z" />
+        android:fillColor="#0B100E"
+        android:pathData="M38,33 H70 A9,9 0 0 1 79,42 V66 A9,9 0 0 1 70,75 H38 A9,9 0 0 1 29,66 V42 A9,9 0 0 1 38,33 Z" />
+
+    <!-- Bezel -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M52.75,59 H64 V62.25 H52.75 Z" />
+        android:strokeColor="#00E676"
+        android:strokeWidth="2.8"
+        android:pathData="M38,33 H70 A9,9 0 0 1 79,42 V66 A9,9 0 0 1 70,75 H38 A9,9 0 0 1 29,66 V42 A9,9 0 0 1 38,33 Z" />
+
+    <!-- Title bar: the rule plus three dots -->
+    <path
+        android:strokeColor="#00E676"
+        android:strokeWidth="1.6"
+        android:strokeAlpha="0.35"
+        android:pathData="M29,44 H79" />
+    <group>
+        <path
+            android:fillColor="#00E676"
+            android:fillAlpha="0.55"
+            android:pathData="M35.5,37 a1.5,1.5 0 1,0 0,3 a1.5,1.5 0 1,0 0,-3 Z" />
+        <path
+            android:fillColor="#00E676"
+            android:fillAlpha="0.55"
+            android:pathData="M41,37 a1.5,1.5 0 1,0 0,3 a1.5,1.5 0 1,0 0,-3 Z" />
+        <path
+            android:fillColor="#00E676"
+            android:fillAlpha="0.55"
+            android:pathData="M46.5,37 a1.5,1.5 0 1,0 0,3 a1.5,1.5 0 1,0 0,-3 Z" />
+    </group>
+
+    <!-- Shell prompt: a chevron and a block cursor waiting for input -->
+    <path
+        android:strokeColor="#4DFF9F"
+        android:strokeWidth="3.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M36.5,53 L42,58.5 L36.5,64" />
+    <path
+        android:fillColor="#4DFF9F"
+        android:pathData="M49.6,54.8 H60.4 A1.6,1.6 0 0 1 62,56.4 V60.6 A1.6,1.6 0 0 1 60.4,62.2 H49.6 A1.6,1.6 0 0 1 48,60.6 V56.4 A1.6,1.6 0 0 1 49.6,54.8 Z" />
 </vector>
