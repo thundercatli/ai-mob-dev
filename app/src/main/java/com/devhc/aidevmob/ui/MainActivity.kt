@@ -20,6 +20,7 @@ class MainActivity : AppCompatActivity() {
         binding.bottomNav.setOnItemSelectedListener { item ->
             val fragment = when (item.itemId) {
                 R.id.navTunnel -> TunnelListFragment()
+                R.id.navCredential -> CredentialListFragment()
                 else -> ConnectionListFragment()
             }
             showFragment(fragment)

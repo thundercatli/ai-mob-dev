@@ -33,6 +33,11 @@
             android:windowSoftInputMode="adjustResize" />
 
         <activity
+            android:name=".ui.CredentialEditActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name=".ui.TunnelEditActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />

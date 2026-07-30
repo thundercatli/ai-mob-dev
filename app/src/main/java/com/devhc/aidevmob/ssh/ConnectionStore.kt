@@ -111,6 +111,7 @@ class ConnectionStore(context: Context) {
         put("name", config.name)
         put("host", config.host)
         put("port", config.port)
+        put("credentialId", config.credentialId ?: JSONObject.NULL)
         put("username", config.username)
         put("authMethod", config.authMethod.name)
         put("password", config.password ?: JSONObject.NULL)
@@ -129,6 +130,7 @@ class ConnectionStore(context: Context) {
             name = json.optString("name"),
             host = host,
             port = json.optInt("port", 22),
+            credentialId = json.optStringOrNull("credentialId"),
             username = json.optString("username"),
             authMethod = authMethod,
             password = json.optStringOrNull("password"),

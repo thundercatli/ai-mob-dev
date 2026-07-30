@@ -78,55 +78,62 @@
                             android:focusable="false" />
                     </com.google.android.material.textfield.TextInputLayout>
 
-                    <com.google.android.material.textfield.TextInputLayout
-                        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                    <!-- Hidden while a tunnel is selected: the address is then always the tunnel's
+                         local listener, so making the user retype it only invites mismatches. -->
+                    <LinearLayout
+                        android:id="@+id/groupDirectTarget"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:hint="Host（例如 127.0.0.1）">
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/editHost"
+                        android:orientation="vertical">
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:inputType="textNoSuggestions"
-                            android:singleLine="true" />
-                    </com.google.android.material.textfield.TextInputLayout>
+                            android:layout_marginTop="10dp"
+                            android:hint="Host（例如 192.168.1.10）">
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/editHost"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:inputType="textNoSuggestions"
+                                android:singleLine="true" />
+                        </com.google.android.material.textfield.TextInputLayout>
 
-                    <com.google.android.material.textfield.TextInputLayout
-                        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:hint="Port（默认 22）">
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/editPort"
+                        <com.google.android.material.textfield.TextInputLayout
+                            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:inputType="number"
-                            android:singleLine="true"
-                            android:text="22" />
-                    </com.google.android.material.textfield.TextInputLayout>
+                            android:layout_marginTop="10dp"
+                            android:hint="Port（默认 22）">
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/editPort"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:inputType="number"
+                                android:singleLine="true"
+                                android:text="22" />
+                        </com.google.android.material.textfield.TextInputLayout>
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/textTunnelTarget"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:visibility="gone" />
 
                     <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/layoutTmuxSession"
                         style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="10dp"
-                        android:hint="用户名">
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/editUsername"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:inputType="textNoSuggestions"
-                            android:singleLine="true" />
-                    </com.google.android.material.textfield.TextInputLayout>
-
-                    <com.google.android.material.textfield.TextInputLayout
-                        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:hint="tmux session 名（留空则只开普通 shell）">
+                        app:helperTextEnabled="true"
+                        app:helperText="留空则只开普通 shell"
+                        android:hint="tmux session 名">
                         <com.google.android.material.textfield.TextInputEditText
                             android:id="@+id/editTmuxSession"
                             android:layout_width="match_parent"
@@ -134,6 +141,16 @@
                             android:inputType="textNoSuggestions"
                             android:singleLine="true" />
                     </com.google.android.material.textfield.TextInputLayout>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/buttonProbeTmux"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="end"
+                        android:layout_marginTop="4dp"
+                        app:icon="@drawable/ic_search"
+                        android:text="探测远端 session" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -154,80 +171,57 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="登录方式"
+                        android:text="认证"
                         android:textAppearance="?attr/textAppearanceTitleSmall"
                         android:textColor="?attr/colorOnSurfaceVariant"
                         android:layout_marginBottom="8dp" />
 
-                    <RadioGroup
-                        android:id="@+id/radioAuthMethod"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal">
-
-                        <RadioButton
-                            android:id="@+id/radioPassword"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="密码登录"
-                            android:checked="true" />
-
-                        <RadioButton
-                            android:id="@+id/radioPrivateKey"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="24dp"
-                            android:text="私钥登录" />
-                    </RadioGroup>
-
                     <com.google.android.material.textfield.TextInputLayout
-                        android:id="@+id/layoutPassword"
-                        style="@style/Widget.Material3.TextInputLayout.OutlinedBox.Dense"
+                        style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        app:passwordToggleEnabled="true"
-                        android:hint="密码">
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/editPassword"
+                        android:hint="使用的认证">
+                        <com.google.android.material.textfield.MaterialAutoCompleteTextView
+                            android:id="@+id/dropdownCredential"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:inputType="textPassword"
-                            android:singleLine="true" />
+                            android:inputType="none"
+                            android:focusable="false" />
                     </com.google.android.material.textfield.TextInputLayout>
 
-                    <com.google.android.material.textfield.TextInputLayout
-                        android:id="@+id/layoutPrivateKey"
-                        style="@style/Widget.Material3.TextInputLayout.OutlinedBox.Dense"
+                    <TextView
+                        android:id="@+id/textCredentialDetail"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:visibility="gone"
-                        android:hint="私钥内容（PEM，OpenSSH/PKCS8）">
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/editPrivateKey"
-                            android:layout_width="match_parent"
-                            android:layout_height="120dp"
-                            android:gravity="top|start"
-                            android:inputType="textMultiLine" />
-                    </com.google.android.material.textfield.TextInputLayout>
+                        android:layout_marginTop="6dp"
+                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textColor="?attr/colorOnSurfaceVariant" />
 
-                    <com.google.android.material.textfield.TextInputLayout
-                        android:id="@+id/layoutPassphrase"
-                        style="@style/Widget.Material3.TextInputLayout.OutlinedBox.Dense"
+                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:visibility="gone"
-                        app:passwordToggleEnabled="true"
-                        android:hint="私钥密码（如果有）">
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/editPassphrase"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:inputType="textPassword"
-                            android:singleLine="true" />
-                    </com.google.android.material.textfield.TextInputLayout>
+                        android:orientation="horizontal"
+                        android:layout_marginTop="10dp">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/buttonNewCredential"
+                            style="@style/Widget.Material3.Button.TonalButton"
+                            android:layout_width="0dp"
+                            android:layout_height="48dp"
+                            android:layout_weight="1"
+                            android:layout_marginEnd="8dp"
+                            app:cornerRadius="12dp"
+                            android:text="新建认证" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/buttonEditCredential"
+                            style="@style/Widget.Material3.Button.OutlinedButton"
+                            android:layout_width="0dp"
+                            android:layout_height="48dp"
+                            android:layout_weight="1"
+                            app:cornerRadius="12dp"
+                            android:text="编辑所选" />
+                    </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

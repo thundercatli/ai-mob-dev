@@ -5,6 +5,10 @@
         android:icon="@drawable/ic_tab_terminal"
         android:title="@string/tab_connect" />
     <item
+        android:id="@+id/navCredential"
+        android:icon="@drawable/ic_tab_key"
+        android:title="@string/tab_credential" />
+    <item
         android:id="@+id/navTunnel"
         android:icon="@drawable/ic_tab_tunnel"
         android:title="@string/tab_tunnel" />

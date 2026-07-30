@@ -5,7 +5,6 @@ import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.connection.channel.direct.Session
-import net.schmizz.sshj.userauth.password.PasswordUtils
 import java.io.IOException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -32,28 +31,12 @@ class SshTerminalConnector(
 
     @Throws(IOException::class)
     fun connect(sessionClient: TerminalSessionClient, initialColumns: Int, initialRows: Int): TerminalSession {
-        val ssh = SSHClient()
-        ssh.connectTimeout = 15_000
-        ssh.addHostKeyVerifier(hostKeyVerifier)
-        ssh.connect(config.host, config.port)
+        val ssh = openSshClient(config, hostKeyVerifier)
         sshClient = ssh
         // Send an SSH-level keepalive periodically so NAT/tunnel/firewall hops along the way (in
         // particular the frp STCP tunnel and mobile-network NAT) don't consider the connection idle
         // and silently drop it - which otherwise surfaces as a "Broken transport; encountered EOF".
         ssh.connection.keepAlive.keepAliveInterval = 15
-
-        when (config.authMethod) {
-            AuthMethod.PASSWORD -> ssh.authPassword(config.username, config.password ?: "")
-            AuthMethod.PRIVATE_KEY -> {
-                val privateKeyPem = config.privateKeyPem
-                    ?: throw IOException("No private key provided")
-                val passphraseFinder = config.privateKeyPassphrase
-                    ?.takeIf { it.isNotEmpty() }
-                    ?.let { PasswordUtils.createOneOff(it.toCharArray()) }
-                val keyProvider = ssh.loadKeys(privateKeyPem, null, passphraseFinder)
-                ssh.authPublickey(config.username, keyProvider)
-            }
-        }
 
         val session = ssh.startSession()
         // Ask for a UTF-8 locale so CJK output renders correctly. sshd only honours this when its

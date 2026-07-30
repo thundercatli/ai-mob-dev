@@ -1,6 +1,8 @@
 package com.devhc.aidevmob
 
 import android.app.Application
+import com.devhc.aidevmob.ssh.ConnectionStore
+import com.devhc.aidevmob.ssh.CredentialStore
 import java.security.Security
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 
@@ -20,5 +22,9 @@ class AiDevMobApplication : Application() {
         // hardware-backed key handle it doesn't actually hold the raw material for.
         Security.removeProvider("BC")
         Security.addProvider(BouncyCastleProvider())
+
+        // Profiles saved before credentials existed keep their own inline secret; lift those into the
+        // credential list once, so they show up as reusable logins. No-op after the first run.
+        CredentialStore(this).migrateFromConnections(ConnectionStore(this))
     }
 }

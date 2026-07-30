@@ -8,9 +8,12 @@ import android.view.ViewGroup
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.devhc.aidevmob.databinding.FragmentConnectionListBinding
+import com.devhc.aidevmob.frp.FrpcConfigStore
 import com.devhc.aidevmob.frp.FrpcRuntime
 import com.devhc.aidevmob.ssh.ConnectionConfig
 import com.devhc.aidevmob.ssh.ConnectionStore
+import com.devhc.aidevmob.ssh.CredentialStore
+import com.devhc.aidevmob.ssh.withCredential
 
 class ConnectionListFragment : Fragment() {
 
@@ -18,6 +21,7 @@ class ConnectionListFragment : Fragment() {
     private val binding get() = _binding!!
 
     private lateinit var store: ConnectionStore
+    private lateinit var credentialStore: CredentialStore
     private lateinit var adapter: ConnectionAdapter
 
     override fun onCreateView(
@@ -31,7 +35,9 @@ class ConnectionListFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        store = ConnectionStore(requireContext().applicationContext)
+        val appContext = requireContext().applicationContext
+        store = ConnectionStore(appContext)
+        credentialStore = CredentialStore(appContext)
 
         adapter = ConnectionAdapter(onOpen = ::openTerminal, onEdit = ::editConnection)
         binding.recyclerConnections.layoutManager = LinearLayoutManager(requireContext())
@@ -54,10 +60,29 @@ class ConnectionListFragment : Fragment() {
 
     private fun refresh() {
         val profiles = store.list()
-        adapter.submit(profiles)
+        val tunnelNames = FrpcConfigStore(requireContext().applicationContext)
+            .list()
+            .associate { it.id to it.displayName }
+        val runningIds = FrpcRuntime.runningTunnelIds()
+
+        // Resolve credentials for display so a renamed login (or changed username) shows up here
+        // without having to re-save every connection that uses it.
+        val credentials = credentialStore.list().associateBy { it.id }
+
+        adapter.submit(
+            profiles.map { profile ->
+                val config = profile.withCredential(credentials[profile.credentialId])
+                ConnectionAdapter.Row(
+                    config = config,
+                    credentialName = credentials[profile.credentialId]?.displayName,
+                    tunnelName = config.tunnelId?.let { tunnelNames[it] },
+                    tunnelRunning = config.tunnelId != null && config.tunnelId in runningIds
+                )
+            }
+        )
         binding.textEmpty.visibility = if (profiles.isEmpty()) View.VISIBLE else View.GONE
 
-        val runningTunnels = FrpcRuntime.runningTunnelIds().size
+        val runningTunnels = runningIds.size
         binding.textSubtitle.text = if (runningTunnels > 0) {
             "已有 $runningTunnels 条隧道在运行，点连接进入终端"
         } else {

@@ -20,6 +20,7 @@ import com.devhc.aidevmob.frp.FrpcRuntime
 import com.devhc.aidevmob.frp.FrpcVisitorService
 import com.devhc.aidevmob.ssh.ConnectionConfig
 import com.devhc.aidevmob.ssh.ConnectionStore
+import com.devhc.aidevmob.ssh.CredentialStore
 import com.devhc.aidevmob.ssh.SshTerminalConnector
 import com.devhc.aidevmob.ssh.TofuHostKeyStore
 import com.devhc.aidevmob.ssh.TofuHostKeyVerifier
@@ -56,7 +57,13 @@ class TerminalActivity : AppCompatActivity() {
             finish()
             return
         }
-        config = loadedConfig
+        // Fold in the referenced credential so the SSH layer sees a self-contained profile.
+        config = CredentialStore(applicationContext).resolve(loadedConfig)
+        if (config.username.isBlank()) {
+            Toast.makeText(this, "这个连接还没有选择认证，请先在连接设置里选一个", Toast.LENGTH_LONG).show()
+            finish()
+            return
+        }
 
         binding.toolbar.title = config.displayName
         binding.toolbar.subtitle = config.subtitle
@@ -231,6 +238,8 @@ class TerminalActivity : AppCompatActivity() {
 
         addKey("ESC") { sendBytes(byteArrayOf(27)) }
         addKey("TAB") { sendBytes(byteArrayOf(9)) }
+        // Back-tab (terminfo kcbt), what shift+tab produces on a real keyboard.
+        addKey("S-TAB") { sendString("$esc[Z") }
         addToggleKey("CTRL") { pressed -> viewClient.ctrlDown = pressed }
         addKey("^C") { sendBytes(byteArrayOf(3)) }
         addKey("^D") { sendBytes(byteArrayOf(4)) }
