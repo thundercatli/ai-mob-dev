@@ -136,7 +136,9 @@ class StartupPermissionCheck(private val activity: AppCompatActivity) {
             .onFailure { askNext() }
     }
 
-    private companion object {
+    // Internal rather than private so the launch smoke test can opt out of the dialog by writing the
+    // same pref, instead of duplicating its name.
+    internal companion object {
         const val PREFS_NAME = "startup_permission_check"
         const val KEY_OPTED_OUT = "opted_out"
 

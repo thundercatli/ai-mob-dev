@@ -31,6 +31,7 @@ android {
         // CI overrides these for tagged builds so the APK reports the released version.
         versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 1
         versionName = System.getenv("VERSION_NAME")?.takeIf { it.isNotBlank() } ?: "0.1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             // We only ship a prebuilt arm64 frpc binary (packaged as jniLibs/arm64-v8a/libfrpc.so).
             abiFilters += "arm64-v8a"
@@ -98,4 +99,10 @@ dependencies {
     // BouncyCastleProvider directly (AiDevMobApplication) to replace Android's stripped-down
     // built-in "BC" provider, so declare it explicitly to pin the compile-time API.
     implementation("org.bouncycastle:bcprov-jdk18on:1.80.2")
+
+    // Only used by the launch smoke test in src/androidTest: ActivityScenario opens the app for real
+    // on an emulator, which is the only way to catch a crash in an Activity's own initialisation.
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:core-ktx:1.6.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
 }
