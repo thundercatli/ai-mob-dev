@@ -8,6 +8,8 @@ import android.os.Looper
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.inputmethod.InputMethodManager
 import android.widget.TextView
@@ -24,6 +26,7 @@ import com.devhc.aidevmob.ssh.CredentialStore
 import com.devhc.aidevmob.ssh.SshTerminalConnector
 import com.devhc.aidevmob.ssh.TofuHostKeyStore
 import com.devhc.aidevmob.ssh.TofuHostKeyVerifier
+import com.termux.terminal.KeyHandler
 import com.termux.terminal.TerminalSession
 import kotlin.concurrent.thread
 
@@ -234,23 +237,24 @@ class TerminalActivity : AppCompatActivity() {
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, dp, resources.displayMetrics).toInt()
 
     private fun buildExtraKeysRow() {
-        val esc = 0x1B.toChar()
-
         addKey("ESC") { sendBytes(byteArrayOf(27)) }
+        addToggleKey("CTRL") { pressed -> viewClient.ctrlDown = pressed }
+        // The arrows come early on purpose: the row scrolls horizontally, so on a phone anything past
+        // the first handful of keys is off-screen, and these are the ones needed constantly (shell
+        // history, TUI navigation). Held down they repeat, like a real keyboard.
+        addRepeatableKey("←") { sendKeyCode(KeyEvent.KEYCODE_DPAD_LEFT) }
+        addRepeatableKey("↓") { sendKeyCode(KeyEvent.KEYCODE_DPAD_DOWN) }
+        addRepeatableKey("↑") { sendKeyCode(KeyEvent.KEYCODE_DPAD_UP) }
+        addRepeatableKey("→") { sendKeyCode(KeyEvent.KEYCODE_DPAD_RIGHT) }
         addKey("TAB") { sendBytes(byteArrayOf(9)) }
         // Back-tab (terminfo kcbt), what shift+tab produces on a real keyboard.
-        addKey("S-TAB") { sendString("$esc[Z") }
-        addToggleKey("CTRL") { pressed -> viewClient.ctrlDown = pressed }
+        addKey("S-TAB") { sendKeyCode(KeyEvent.KEYCODE_TAB, KeyHandler.KEYMOD_SHIFT) }
         addKey("^C") { sendBytes(byteArrayOf(3)) }
         addKey("^D") { sendBytes(byteArrayOf(4)) }
-        addKey("Home") { sendString("$esc[H") }
-        addKey("End") { sendString("$esc[F") }
-        addKey("Up") { sendString("$esc[A") }
-        addKey("Down") { sendString("$esc[B") }
-        addKey("Left") { sendString("$esc[D") }
-        addKey("Right") { sendString("$esc[C") }
-        addKey("PgUp") { sendString("$esc[5~") }
-        addKey("PgDn") { sendString("$esc[6~") }
+        addKey("Home") { sendKeyCode(KeyEvent.KEYCODE_MOVE_HOME) }
+        addKey("End") { sendKeyCode(KeyEvent.KEYCODE_MOVE_END) }
+        addRepeatableKey("PgUp") { sendKeyCode(KeyEvent.KEYCODE_PAGE_UP) }
+        addRepeatableKey("PgDn") { sendKeyCode(KeyEvent.KEYCODE_PAGE_DOWN) }
         addKey("Enter") { sendBytes(byteArrayOf(13)) }
         addKey("y") { sendString("y") }
         addKey("n") { sendString("n") }
@@ -260,6 +264,38 @@ class TerminalActivity : AppCompatActivity() {
         binding.extraKeysRow.addView(makeKeyView(label).apply {
             setOnClickListener { onClick() }
         })
+    }
+
+    /**
+     * A key that keeps firing while held, so moving across a long command line or scrolling back
+     * doesn't mean tapping dozens of times. The first repeat waits out [KEY_REPEAT_DELAY_MS] so a
+     * normal tap stays a single keypress.
+     */
+    private fun addRepeatableKey(label: String, onPress: () -> Unit) {
+        val view = makeKeyView(label)
+        val repeat = object : Runnable {
+            override fun run() {
+                onPress()
+                mainHandler.postDelayed(this, KEY_REPEAT_INTERVAL_MS)
+            }
+        }
+        view.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    view.setBackgroundColor(getColor(R.color.terminal_key_bg_active))
+                    onPress()
+                    mainHandler.postDelayed(repeat, KEY_REPEAT_DELAY_MS)
+                }
+                // Also on CANCEL, which is what scrolling the key row delivers - missing it would
+                // leave the key repeating forever.
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    view.setBackgroundColor(getColor(R.color.terminal_key_bg))
+                    mainHandler.removeCallbacks(repeat)
+                }
+            }
+            true
+        }
+        binding.extraKeysRow.addView(view)
     }
 
     private fun addToggleKey(label: String, onToggle: (Boolean) -> Unit) {
@@ -290,6 +326,20 @@ class TerminalActivity : AppCompatActivity() {
                 android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { setMargins(margin, margin, margin, margin) }
         }
+    }
+
+    /**
+     * Sends a key by keycode rather than by writing a fixed escape sequence, because several of these
+     * keys have two encodings and only the emulator knows which one applies: arrows and Home/End are
+     * `ESC [ A` normally but `ESC O A` once the foreground program switches the terminal into
+     * application-cursor mode - which every full-screen TUI does (vim, less, htop, Claude Code). The
+     * hardcoded normal-mode form left the arrows doing nothing in exactly those programs.
+     */
+    private fun sendKeyCode(keyCode: Int, keyMod: Int = 0) {
+        // handleKeyCode() dereferences the attached session; until the SSH connect has finished and
+        // attachSession() has run on the main thread, there isn't one.
+        if (binding.terminalView.currentSession == null) return
+        binding.terminalView.handleKeyCode(keyCode, keyMod)
     }
 
     private fun sendBytes(bytes: ByteArray) {
@@ -332,6 +382,8 @@ class TerminalActivity : AppCompatActivity() {
         private const val MAX_RECONNECT_ATTEMPTS = 5
         private const val TUNNEL_WAIT_TIMEOUT_MS = 20_000L
         private const val TUNNEL_POLL_INTERVAL_MS = 300L
+        private const val KEY_REPEAT_DELAY_MS = 400L
+        private const val KEY_REPEAT_INTERVAL_MS = 60L
 
         const val EXTRA_CONNECTION_ID = "connection_id"
     }

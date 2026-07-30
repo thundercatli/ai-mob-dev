@@ -8,7 +8,7 @@
 - **认证管理**：用户名 + 密码/私钥单独存成「认证」，多个连接复用同一份；私钥可以从手机本地文件选（SAF）或从剪贴板粘贴。全部存在 EncryptedSharedPreferences 里。老版本里写在连接上的凭据会在首次启动时自动抽成认证条目
 - **隧道管理**：多条 frpc STCP 隧道，各自独立进程、独立本地端口，可单独启停并查看日志
 - **自动打隧道**：连接可关联某条隧道，进入终端时若隧道未启动会自动拉起并等待就绪
-- **终端**：VT100 全功能终端（基于 Termux 的 terminal-view / terminal-emulator），附加功能键行、断线自动重连（配合 tmux 可无损续接）
+- **终端**：VT100 全功能终端（基于 Termux 的 terminal-view / terminal-emulator），附加功能键行（方向键 ←↓↑→ 长按连发，编码跟随程序的 application cursor 模式，vim / less 里也能用）、断线自动重连（配合 tmux 可无损续接）
 
 ## 构建
 
