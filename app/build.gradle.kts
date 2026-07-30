@@ -28,8 +28,9 @@ android {
         applicationId = "com.devhc.aidevmob"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        // CI overrides these for tagged builds so the APK reports the released version.
+        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 1
+        versionName = System.getenv("VERSION_NAME")?.takeIf { it.isNotBlank() } ?: "0.1.0"
         ndk {
             // We only ship a prebuilt arm64 frpc binary (packaged as jniLibs/arm64-v8a/libfrpc.so).
             abiFilters += "arm64-v8a"
