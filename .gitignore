@@ -17,6 +17,10 @@ keystore.properties
 # (it is packaged as a .so so Android will extract it as a native library).
 *.so
 
+# iOS: the Frpclib.xcframework is regenerated from ios/frpcllib via scripts/build_frpc_ios.sh.
+# Committing it bloats the repo (~50MB+) and the Go source is the real source of truth.
+ios/Frameworks/
+
 # IDE
 .idea/
 *.iml
