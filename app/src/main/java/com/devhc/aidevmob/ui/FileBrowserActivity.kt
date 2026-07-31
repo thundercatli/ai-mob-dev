@@ -73,7 +73,8 @@ class FileBrowserActivity : AppCompatActivity() {
     private var session: SftpSession? = null
     private var currentPath: String = "/"
 
-    private val touchSlop by lazy { ViewConfiguration.get(this).scaledTouchSlop }
+    /** Movement under this still counts as a tap on the divider rather than a drag. */
+    private val tapMaxTravelPx by lazy { ViewConfiguration.get(this).scaledTouchSlop / 2f }
 
     /** Raw listing as fetched; the view applies sorting and the dotfile filter on top. */
     private var entries: List<RemoteEntry> = emptyList()
@@ -89,6 +90,9 @@ class FileBrowserActivity : AppCompatActivity() {
 
     /** True when this screen was opened to pick a directory rather than to browse. */
     private var pickingFolder = false
+
+    /** Markdown is shown rendered by default; this flips the current file back to its source. */
+    private var markdownAsSource = false
 
     /** File currently in the preview pane, if any. */
     private var previewing: RemoteEntry? = null
@@ -137,6 +141,10 @@ class FileBrowserActivity : AppCompatActivity() {
         binding.buttonCollapseTree.setOnClickListener { setTreeCollapsed(true) }
         binding.stripExpand.setOnClickListener { setTreeCollapsed(false) }
         setUpDividerDrag()
+        binding.buttonToggleMarkdown.setOnClickListener {
+            markdownAsSource = !markdownAsSource
+            previewing?.let(::preview)
+        }
 
         pickingFolder = intent.getBooleanExtra(EXTRA_PICK_FOLDER, false)
         if (pickingFolder) {
@@ -477,7 +485,9 @@ class FileBrowserActivity : AppCompatActivity() {
                     }
                     else -> {
                         val (text, truncated) = active.previewText(entry.path)
-                        Loaded.Text(text, truncated)
+                        // Styling happens here, not on the main thread: a 500 KB file is a lot of
+                        // spans, and the text is already in hand on this worker.
+                        Loaded.Text(styleText(text, entry.name), truncated)
                     }
                 }
             }
@@ -501,7 +511,7 @@ class FileBrowserActivity : AppCompatActivity() {
                 binding.imagePreview.visibility = View.GONE
                 binding.scrollPreviewText.visibility = View.VISIBLE
                 binding.textPreviewContent.text =
-                    loaded.text.ifEmpty { getString(R.string.files_preview_empty) }
+                    loaded.text.ifBlank { getString(R.string.files_preview_empty) }
                 if (loaded.truncated) {
                     showPreviewNotice(
                         getString(R.string.files_preview_truncated, SftpSession.MAX_PREVIEW_BYTES / 1024)
@@ -548,6 +558,12 @@ class FileBrowserActivity : AppCompatActivity() {
         binding.textPreviewName.text = entry.name
         binding.textPreviewMeta.text = entry.path
         binding.textPreviewNotice.visibility = View.GONE
+        val markdown = isMarkdown(entry.name)
+        binding.buttonToggleMarkdown.visibility = if (markdown) View.VISIBLE else View.GONE
+        binding.buttonToggleMarkdown.setText(
+            if (markdownAsSource) R.string.files_action_view_rendered else R.string.files_action_view_source
+        )
+        if (!markdown) markdownAsSource = false
         binding.imagePreview.setImageDrawable(null)
         binding.textPreviewContent.text = ""
     }
@@ -575,7 +591,7 @@ class FileBrowserActivity : AppCompatActivity() {
     private fun setUpDividerDrag() {
         var startX = 0f
         var startWeight = listWeight
-        var dragging = false
+        var travelled = 0f
 
         binding.paneDivider.setOnTouchListener { view, event ->
             val row = view.parent as View
@@ -583,23 +599,24 @@ class FileBrowserActivity : AppCompatActivity() {
                 MotionEvent.ACTION_DOWN -> {
                     startX = event.rawX
                     startWeight = listWeight
-                    dragging = false
+                    travelled = 0f
                     // Otherwise the scrolling ancestors steal the gesture halfway through.
                     view.parent.requestDisallowInterceptTouchEvent(true)
+                    view.isPressed = true
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    val travelled = event.rawX - startX
-                    if (!dragging && abs(travelled) > touchSlop) dragging = true
-                    if (dragging && row.width > 0) {
-                        applyListWeight(startWeight + travelled / row.width)
-                    }
+                    travelled = event.rawX - startX
+                    // Follows from the very first pixel: this handle has nothing to disambiguate
+                    // against, so waiting out a touch slop only makes it feel sticky.
+                    if (row.width > 0) applyListWeight(startWeight + travelled / row.width)
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     view.parent.requestDisallowInterceptTouchEvent(false)
-                    // A tap rather than a drag: treat it as "give me back a usable tree".
-                    if (!dragging) applyListWeight(DEFAULT_LIST_WEIGHT)
+                    view.isPressed = false
+                    // Only a genuine tap resets; a drag that happens to end near its start does not.
+                    if (abs(travelled) < tapMaxTravelPx) applyListWeight(DEFAULT_LIST_WEIGHT)
                     true
                 }
                 else -> false
@@ -627,10 +644,43 @@ class FileBrowserActivity : AppCompatActivity() {
         if (!effective) applyListWeight(weightBeforeCollapse)
     }
 
+    /** Markdown renders by default; everything else gets syntax colours when its dialect is known. */
+    private fun styleText(text: String, fileName: String): CharSequence = when {
+        isMarkdown(fileName) && !markdownAsSource -> MarkdownRenderer.render(
+            text,
+            MarkdownRenderer.Palette(
+                heading = themeColor(androidx.appcompat.R.attr.colorPrimary),
+                code = getColor(R.color.syntax_string),
+                codeBackground = getColor(R.color.markdown_code_bg),
+                quote = themeColor(com.google.android.material.R.attr.colorOnSurfaceVariant),
+                link = themeColor(androidx.appcompat.R.attr.colorPrimary),
+                rule = themeColor(com.google.android.material.R.attr.colorOutline)
+            )
+        )
+        SyntaxHighlighter.canHighlight(fileName) -> SyntaxHighlighter.highlight(
+            text,
+            fileName,
+            SyntaxHighlighter.Palette(
+                keyword = getColor(R.color.syntax_keyword),
+                string = getColor(R.color.syntax_string),
+                comment = getColor(R.color.syntax_comment),
+                number = getColor(R.color.syntax_number),
+                annotation = getColor(R.color.syntax_annotation)
+            )
+        )
+        else -> text
+    }
+
+    private fun isMarkdown(fileName: String): Boolean =
+        fileName.substringAfterLast('.', "").lowercase() in setOf("md", "markdown", "mdown")
+
+    private fun themeColor(attr: Int): Int =
+        com.google.android.material.color.MaterialColors.getColor(binding.root, attr)
+
     private enum class PreviewKind { TEXT, IMAGE, NONE }
 
     private sealed interface Loaded {
-        data class Text(val text: String, val truncated: Boolean) : Loaded
+        data class Text(val text: CharSequence, val truncated: Boolean) : Loaded
         data class Image(val drawable: Drawable?) : Loaded
     }
 

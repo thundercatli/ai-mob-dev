@@ -415,4 +415,6 @@
     <string name="files_pick_only_folders">Pick a folder, not a file</string>
     <string name="connection_action_browse_path">Browse…</string>
     <string name="connection_browse_needs_save">The connection has to be saved before its files can be browsed</string>
+    <string name="files_action_view_source">Source</string>
+    <string name="files_action_view_rendered">Rendered</string>
 </resources>

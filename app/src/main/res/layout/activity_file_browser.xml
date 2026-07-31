@@ -207,6 +207,18 @@
                         android:ellipsize="end" />
                 </LinearLayout>
 
+                <!-- Only for .md: swaps the rendered view for the source that produced it. -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/buttonToggleMarkdown"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minWidth="0dp"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:text="@string/files_action_view_source"
+                    android:visibility="gone" />
+
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/buttonCollapseTree"
                     style="@style/Widget.Material3.Button.IconButton"

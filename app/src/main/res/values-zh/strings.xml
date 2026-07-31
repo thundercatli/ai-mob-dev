@@ -402,4 +402,6 @@
     <string name="files_pick_only_folders">这里只能选目录</string>
     <string name="connection_action_browse_path">浏览…</string>
     <string name="connection_browse_needs_save">要先保存连接才能浏览它的文件</string>
+    <string name="files_action_view_source">源码</string>
+    <string name="files_action_view_rendered">预览</string>
 </resources>
