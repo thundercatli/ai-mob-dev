@@ -394,4 +394,12 @@
     <string name="files_preview_image_too_big">图片超过 %1$d MB，请下载后查看</string>
     <string name="files_preview_undecodable">这个文件无法作为图片解码</string>
     <string name="files_preview_loading">加载中…</string>
+    <string name="files_strip_label">树</string>
+    <string name="files_divider_hint">拖动调整宽度，点击恢复默认</string>
+    <string name="files_pick_title">选择目录</string>
+    <string name="files_pick_hint">当前：%1$s</string>
+    <string name="files_action_pick_here">就用这个</string>
+    <string name="files_pick_only_folders">这里只能选目录</string>
+    <string name="connection_action_browse_path">浏览…</string>
+    <string name="connection_browse_needs_save">要先保存连接才能浏览它的文件</string>
 </resources>

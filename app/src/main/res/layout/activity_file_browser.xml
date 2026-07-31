@@ -109,12 +109,15 @@
             </LinearLayout>
         </FrameLayout>
 
-        <!-- Strip that stands in for the collapsed tree, so it can always be brought back. -->
-        <FrameLayout
+        <!-- Stands in for the collapsed tree. Wide enough to hit, with a ripple, because a thin
+             silent strip is indistinguishable from a border - the tree then looks unrecoverable. -->
+        <LinearLayout
             android:id="@+id/stripExpand"
-            android:layout_width="28dp"
+            android:layout_width="36dp"
             android:layout_height="match_parent"
-            android:background="?attr/colorSurfaceVariant"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="?attr/selectableItemBackground"
             android:clickable="true"
             android:focusable="true"
             android:contentDescription="@string/files_action_expand_tree"
@@ -123,19 +126,43 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center"
                 android:text="›"
-                android:textSize="20sp"
-                android:textColor="?attr/colorOnSurfaceVariant" />
-        </FrameLayout>
+                android:textSize="22sp"
+                android:textColor="?attr/colorPrimary" />
 
-        <View
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/files_strip_label"
+                android:textSize="10sp"
+                android:textColor="?attr/colorOnSurfaceVariant" />
+        </LinearLayout>
+
+        <FrameLayout
             android:id="@+id/paneDivider"
-            android:layout_width="1dp"
+            android:layout_width="14dp"
             android:layout_height="match_parent"
-            android:background="?attr/colorOutline"
-            android:alpha="0.4"
-            android:visibility="gone" />
+            android:background="?attr/colorSurface"
+            android:clickable="true"
+            android:focusable="true"
+            android:contentDescription="@string/files_divider_hint"
+            android:visibility="gone">
+
+            <View
+                android:layout_width="1dp"
+                android:layout_height="match_parent"
+                android:layout_gravity="center_horizontal"
+                android:background="?attr/colorOutline"
+                android:alpha="0.4" />
+
+            <!-- Grip: the only thing that says this line can be dragged. -->
+            <View
+                android:layout_width="4dp"
+                android:layout_height="34dp"
+                android:layout_gravity="center"
+                android:background="@drawable/bg_drag_grip" />
+        </FrameLayout>
 
         <LinearLayout
             android:id="@+id/panePreview"
@@ -257,6 +284,38 @@
                     android:visibility="gone" />
             </FrameLayout>
         </LinearLayout>
+    </LinearLayout>
+
+    <!-- Only in folder-picking mode: confirms whichever directory is currently open. -->
+    <LinearLayout
+        android:id="@+id/barPick"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="?attr/colorSurfaceVariant"
+        android:paddingStart="16dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="10dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/textPickHint"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginEnd="12dp"
+            android:textAppearance="?attr/textAppearanceBodySmall"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:maxLines="2"
+            android:ellipsize="middle" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/buttonPickHere"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/files_action_pick_here" />
     </LinearLayout>
 
 </LinearLayout>

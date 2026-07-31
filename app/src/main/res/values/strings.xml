@@ -407,4 +407,12 @@
     <string name="files_preview_image_too_big">Image is larger than %1$d MB — download it to view</string>
     <string name="files_preview_undecodable">This file could not be decoded as an image</string>
     <string name="files_preview_loading">Loading…</string>
+    <string name="files_strip_label">树</string>
+    <string name="files_divider_hint">Drag to resize, tap to reset</string>
+    <string name="files_pick_title">Pick a folder</string>
+    <string name="files_pick_hint">Current: %1$s</string>
+    <string name="files_action_pick_here">Use this folder</string>
+    <string name="files_pick_only_folders">Pick a folder, not a file</string>
+    <string name="connection_action_browse_path">Browse…</string>
+    <string name="connection_browse_needs_save">The connection has to be saved before its files can be browsed</string>
 </resources>

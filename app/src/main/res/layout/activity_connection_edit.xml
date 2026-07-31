@@ -142,6 +142,14 @@
                             android:singleLine="true" />
                     </com.google.android.material.textfield.TextInputLayout>
 
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/buttonBrowsePath"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="end"
+                        android:text="@string/connection_action_browse_path" />
+
                     <com.google.android.material.textfield.TextInputLayout
                         android:id="@+id/layoutTmuxSession"
                         style="@style/Widget.Material3.TextInputLayout.OutlinedBox"

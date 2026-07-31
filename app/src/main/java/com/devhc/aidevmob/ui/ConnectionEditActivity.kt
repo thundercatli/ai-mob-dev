@@ -47,6 +47,16 @@ class ConnectionEditActivity : AppCompatActivity() {
         reloadCredentials(preferId = savedId ?: selectedCredentialId)
     }
 
+    /** Brings back a directory chosen in the file browser, so the path never has to be typed. */
+    private val pickFolder = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode != RESULT_OK) return@registerForActivityResult
+        result.data?.getStringExtra(FileBrowserActivity.EXTRA_PICKED_PATH)?.let {
+            binding.editDefaultPath.setText(it)
+        }
+    }
+
     /** Null while creating a profile that has not been saved yet. */
     private var existing: ConnectionConfig? = null
 
@@ -101,6 +111,7 @@ class ConnectionEditActivity : AppCompatActivity() {
         }
 
         binding.buttonProbeTmux.setOnClickListener { probeTmuxSessions() }
+        binding.buttonBrowsePath.setOnClickListener { browseForDefaultPath() }
         binding.buttonNewCredential.setOnClickListener {
             editCredential.launch(Intent(this, CredentialEditActivity::class.java))
         }
@@ -418,6 +429,19 @@ class ConnectionEditActivity : AppCompatActivity() {
     private fun probeTargetLabel(): String {
         val tunnel = selectedTunnel()
         return if (tunnel != null) tunnel.displayName else binding.editHost.text?.toString()?.trim().orEmpty()
+    }
+
+    /**
+     * Opens the file browser as a directory picker. The browser resolves a connection by id, so an
+     * unsaved profile is written first - the alternative is passing credentials through an Intent.
+     */
+    private fun browseForDefaultPath() {
+        val saved = save() ?: return
+        pickFolder.launch(
+            Intent(this, FileBrowserActivity::class.java)
+                .putExtra(FileBrowserActivity.EXTRA_CONNECTION_ID, saved.id)
+                .putExtra(FileBrowserActivity.EXTRA_PICK_FOLDER, true)
+        )
     }
 
     private fun confirmDelete() {

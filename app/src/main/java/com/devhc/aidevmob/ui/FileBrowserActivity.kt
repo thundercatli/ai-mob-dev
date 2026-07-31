@@ -14,7 +14,10 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
 import android.view.MenuItem
+import android.view.MotionEvent
+import android.view.ViewConfiguration
 import android.view.View
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
@@ -42,6 +45,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
+import kotlin.math.abs
 
 /**
  * Browses the remote filesystem of a connection over SFTP: directories, file details, text preview and
@@ -69,10 +73,22 @@ class FileBrowserActivity : AppCompatActivity() {
     private var session: SftpSession? = null
     private var currentPath: String = "/"
 
+    private val touchSlop by lazy { ViewConfiguration.get(this).scaledTouchSlop }
+
     /** Raw listing as fetched; the view applies sorting and the dotfile filter on top. */
     private var entries: List<RemoteEntry> = emptyList()
     private var sort = Sort.NAME
     private var showHidden = false
+
+    /** Share of the width given to the tree while the preview is open. */
+    private var listWeight = DEFAULT_LIST_WEIGHT
+
+    /** Width the tree returns to when it is expanded again. */
+    private var weightBeforeCollapse = DEFAULT_LIST_WEIGHT
+    private var treeCollapsed = false
+
+    /** True when this screen was opened to pick a directory rather than to browse. */
+    private var pickingFolder = false
 
     /** File currently in the preview pane, if any. */
     private var previewing: RemoteEntry? = null
@@ -120,6 +136,17 @@ class FileBrowserActivity : AppCompatActivity() {
         binding.buttonClosePreview.setOnClickListener { closePreview() }
         binding.buttonCollapseTree.setOnClickListener { setTreeCollapsed(true) }
         binding.stripExpand.setOnClickListener { setTreeCollapsed(false) }
+        setUpDividerDrag()
+
+        pickingFolder = intent.getBooleanExtra(EXTRA_PICK_FOLDER, false)
+        if (pickingFolder) {
+            binding.toolbar.setTitle(R.string.files_pick_title)
+            binding.barPick.visibility = View.VISIBLE
+            binding.buttonPickHere.setOnClickListener {
+                setResult(RESULT_OK, Intent().putExtra(EXTRA_PICKED_PATH, currentPath))
+                finish()
+            }
+        }
         binding.buttonPreviewDownload.setOnClickListener {
             previewing?.let {
                 pendingDownload = it
@@ -277,6 +304,7 @@ class FileBrowserActivity : AppCompatActivity() {
 
     private fun showListing(path: String, listing: List<RemoteEntry>) {
         currentPath = path
+        if (pickingFolder) binding.textPickHint.text = getString(R.string.files_pick_hint, path)
         entries = listing
         buildBreadcrumbs(path)
         renderEntries()
@@ -368,7 +396,12 @@ class FileBrowserActivity : AppCompatActivity() {
     // ---------------------------------------------------------------- entry actions
 
     private fun openEntry(entry: RemoteEntry) {
-        if (entry.isDirectory) navigateTo(entry.path) else preview(entry)
+        when {
+            entry.isDirectory -> navigateTo(entry.path)
+            // In picking mode a file is not a valid answer, and previewing one would be a detour.
+            pickingFolder -> Toast.makeText(this, R.string.files_pick_only_folders, Toast.LENGTH_SHORT).show()
+            else -> preview(entry)
+        }
     }
 
     /** Bottom sheet with the details a row deliberately omits, plus what you can do with the file. */
@@ -534,12 +567,64 @@ class FileBrowserActivity : AppCompatActivity() {
         setTreeCollapsed(false)
     }
 
+    /**
+     * Lets the divider be dragged to rebalance the two panes. The handle is 14dp wide rather than the
+     * 1dp line it draws: a hairline is unhittable, and a split you cannot rebalance is the whole
+     * complaint about fixed thirds.
+     */
+    private fun setUpDividerDrag() {
+        var startX = 0f
+        var startWeight = listWeight
+        var dragging = false
+
+        binding.paneDivider.setOnTouchListener { view, event ->
+            val row = view.parent as View
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    startX = event.rawX
+                    startWeight = listWeight
+                    dragging = false
+                    // Otherwise the scrolling ancestors steal the gesture halfway through.
+                    view.parent.requestDisallowInterceptTouchEvent(true)
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val travelled = event.rawX - startX
+                    if (!dragging && abs(travelled) > touchSlop) dragging = true
+                    if (dragging && row.width > 0) {
+                        applyListWeight(startWeight + travelled / row.width)
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    view.parent.requestDisallowInterceptTouchEvent(false)
+                    // A tap rather than a drag: treat it as "give me back a usable tree".
+                    if (!dragging) applyListWeight(DEFAULT_LIST_WEIGHT)
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    private fun applyListWeight(weight: Float) {
+        listWeight = weight.coerceIn(MIN_LIST_WEIGHT, MAX_LIST_WEIGHT)
+        (binding.paneList.layoutParams as LinearLayout.LayoutParams).weight = listWeight
+        (binding.panePreview.layoutParams as LinearLayout.LayoutParams).weight = 1f - listWeight
+        binding.paneList.requestLayout()
+    }
+
     private fun setTreeCollapsed(collapsed: Boolean) {
         // Collapsing is only meaningful while something is being previewed.
         val effective = collapsed && previewing != null
+        if (effective && !treeCollapsed) weightBeforeCollapse = listWeight
+        treeCollapsed = effective
+
         binding.paneList.visibility = if (effective) View.GONE else View.VISIBLE
         binding.stripExpand.visibility = if (effective) View.VISIBLE else View.GONE
         binding.buttonCollapseTree.visibility = if (effective) View.GONE else View.VISIBLE
+        // The divider stays put while collapsed so the tree can also be dragged back out.
+        if (!effective) applyListWeight(weightBeforeCollapse)
     }
 
     private enum class PreviewKind { TEXT, IMAGE, NONE }
@@ -660,6 +745,11 @@ class FileBrowserActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_CONNECTION_ID = "connection_id"
 
+        /** Opens the browser as a directory picker; the chosen path comes back in [EXTRA_PICKED_PATH]. */
+        const val EXTRA_PICK_FOLDER = "pick_folder"
+        const val EXTRA_PICKED_PATH = "picked_path"
+
+
         private val IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "gif", "webp", "bmp", "heic")
         private val TEXT_EXTENSIONS = setOf(
             "txt", "md", "log", "json", "xml", "yaml", "yml", "toml", "ini", "conf", "cfg", "env",
@@ -667,6 +757,10 @@ class FileBrowserActivity : AppCompatActivity() {
             "c", "h", "cpp", "hpp", "cs", "rb", "php", "swift", "sh", "bash", "zsh", "fish", "sql",
             "html", "css", "scss", "lua", "vim", "diff", "patch", "csv", "tsv"
         )
+
+        private const val DEFAULT_LIST_WEIGHT = 0.34f
+        private const val MIN_LIST_WEIGHT = 0.15f
+        private const val MAX_LIST_WEIGHT = 0.85f
 
         private const val GLYPH_CONNECTING = "⋯"
         private const val GLYPH_EMPTY = "∅"
