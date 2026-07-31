@@ -27,6 +27,12 @@ ios/Frameworks/
 *.iws
 *.ipr
 
+# Xcode: 工程文件提交,但每台机器的 user 数据不提交
+*.xcuserstate
+xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+
 # OS
 .DS_Store
 Thumbs.db

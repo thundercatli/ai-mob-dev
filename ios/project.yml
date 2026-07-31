@@ -1,0 +1,53 @@
+name: AiDevMob
+options:
+  bundleIdPrefix: com.devhc.aidevmob
+  deploymentTarget:
+    iOS: "17.0"          # Citadel requires iOS 17; SwiftTerm only needs 14.
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    DEVELOPMENT_TEAM: ""          # set your Apple ID team in Xcode for sideload signing
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_BITCODE: NO
+
+packages:
+  Citadel:
+    url: https://github.com/orlandos-nl/Citadel.git
+    from: 0.12.1
+  SwiftTerm:
+    url: https://github.com/migueldeicaza/SwiftTerm.git   # note: deicaza (with z)
+    from: 1.15.0
+
+targets:
+  AiDevMob:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: AiDevMob
+    dependencies:
+      - framework: Frameworks/Frpclib.xcframework
+        embed: true
+      - package: Citadel
+      - package: SwiftTerm
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.devhc.aidevmob.ios
+        # Generate Info.plist from the INFOPLIST_KEY_* build settings below (xcodegen sets no
+        # explicit Info.plist file by default, so without this the link fails looking for one).
+        GENERATE_INFOPLIST_FILE: YES
+        # Go's cgo resolver (used by the embedded frpc) calls res_ninit/res_nclose from libresolv;
+        # without this the link fails with undefined symbols _res_9_ninit / _res_9_nclose.
+        OTHER_LDFLAGS: -lresolv
+        # Frpclib.xcframework only ships an arm64 slice (device + Apple-silicon simulator). The
+        # generic simulator destination otherwise drags in x86_64, which has no matching slice.
+        EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        # frpc holds a tunnel open in-process; keeping the screen awake matches the Android app's
+        # "keep screen on" setting. Background life is bounded by iOS regardless (see ios/AGENTS.md).
+        INFOPLIST_KEY_UIRequiresPersistentWiFi: YES
