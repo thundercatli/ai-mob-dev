@@ -386,4 +386,12 @@
     <string name="connection_hint_default_path">默认目录（可选）</string>
     <string name="connection_helper_default_path">文件浏览器从这里打开，例如 /home/user/projects。留空则从登录目录开始。打开后仍可浏览任意位置。</string>
     <string name="files_default_path_missing">打不开 %1$s（%2$s），已改为显示登录目录</string>
+    <string name="files_action_app_home">回到连接列表</string>
+    <string name="files_action_collapse_tree">收起目录树</string>
+    <string name="files_action_expand_tree">展开目录树</string>
+    <string name="files_action_close_preview">关闭预览</string>
+    <string name="files_preview_unsupported">这个类型不支持预览，可以下载后用其他应用打开</string>
+    <string name="files_preview_image_too_big">图片超过 %1$d MB，请下载后查看</string>
+    <string name="files_preview_undecodable">这个文件无法作为图片解码</string>
+    <string name="files_preview_loading">加载中…</string>
 </resources>

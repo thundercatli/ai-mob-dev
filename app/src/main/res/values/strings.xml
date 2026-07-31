@@ -399,4 +399,12 @@
     <string name="connection_hint_default_path">Default folder (optional)</string>
     <string name="connection_helper_default_path">Where the file browser opens, e.g. /home/user/projects. Leave empty to start where the login lands. You can still browse anywhere from there.</string>
     <string name="files_default_path_missing">Could not open %1$s (%2$s) — showing the login directory instead</string>
+    <string name="files_action_app_home">Back to connections</string>
+    <string name="files_action_collapse_tree">Collapse the file tree</string>
+    <string name="files_action_expand_tree">Show the file tree</string>
+    <string name="files_action_close_preview">Close the preview</string>
+    <string name="files_preview_unsupported">No preview for this file type — download it to open elsewhere</string>
+    <string name="files_preview_image_too_big">Image is larger than %1$d MB — download it to view</string>
+    <string name="files_preview_undecodable">This file could not be decoded as an image</string>
+    <string name="files_preview_loading">Loading…</string>
 </resources>

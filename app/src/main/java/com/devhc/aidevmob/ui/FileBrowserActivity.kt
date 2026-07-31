@@ -3,6 +3,13 @@ package com.devhc.aidevmob.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
+import android.graphics.drawable.AnimatedImageDrawable
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
+import android.os.Build
 import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
@@ -11,13 +18,13 @@ import android.view.View
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.annotation.RequiresApi
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.devhc.aidevmob.R
 import com.devhc.aidevmob.databinding.ActivityFileBrowserBinding
 import com.devhc.aidevmob.databinding.DialogFileActionsBinding
-import com.devhc.aidevmob.databinding.DialogFilePreviewBinding
 import com.devhc.aidevmob.frp.TunnelGate
 import com.devhc.aidevmob.ssh.ConnectionConfig
 import com.devhc.aidevmob.ssh.ConnectionStore
@@ -30,6 +37,7 @@ import com.devhc.aidevmob.ssh.parentPath
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import java.io.IOException
+import java.nio.ByteBuffer
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -65,6 +73,9 @@ class FileBrowserActivity : AppCompatActivity() {
     private var entries: List<RemoteEntry> = emptyList()
     private var sort = Sort.NAME
     private var showHidden = false
+
+    /** File currently in the preview pane, if any. */
+    private var previewing: RemoteEntry? = null
 
     /** Set while a download waits for the user to choose a destination. */
     private var pendingDownload: RemoteEntry? = null
@@ -106,9 +117,28 @@ class FileBrowserActivity : AppCompatActivity() {
         binding.recyclerFiles.adapter = adapter
         binding.swipeRefresh.setOnRefreshListener { navigateTo(currentPath, fromPullToRefresh = true) }
 
+        binding.buttonClosePreview.setOnClickListener { closePreview() }
+        binding.buttonCollapseTree.setOnClickListener { setTreeCollapsed(true) }
+        binding.stripExpand.setOnClickListener { setTreeCollapsed(false) }
+        binding.buttonPreviewDownload.setOnClickListener {
+            previewing?.let {
+                pendingDownload = it
+                createDownloadFile.launch(it.name)
+            }
+        }
+
         // Back walks up the tree before it leaves the screen, which is what a file browser should do.
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
+                // Unwind the panes before the path: closing what you opened is what back means here.
+                if (binding.stripExpand.visibility == View.VISIBLE) {
+                    setTreeCollapsed(false)
+                    return
+                }
+                if (previewing != null) {
+                    closePreview()
+                    return
+                }
                 val parent = parentPath(currentPath)
                 if (parent == null || session == null) {
                     isEnabled = false
@@ -123,6 +153,15 @@ class FileBrowserActivity : AppCompatActivity() {
     }
 
     private fun onMenuItemClick(item: MenuItem): Boolean = when (item.itemId) {
+        R.id.actionAppHome -> {
+            // Reuses the existing MainActivity instead of stacking another copy of it.
+            startActivity(
+                Intent(this, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            )
+            finish()
+            true
+        }
         R.id.actionHome -> {
             goHome()
             true
@@ -329,7 +368,7 @@ class FileBrowserActivity : AppCompatActivity() {
     // ---------------------------------------------------------------- entry actions
 
     private fun openEntry(entry: RemoteEntry) {
-        if (entry.isDirectory) navigateTo(entry.path) else showActions(entry)
+        if (entry.isDirectory) navigateTo(entry.path) else preview(entry)
     }
 
     /** Bottom sheet with the details a row deliberately omits, plus what you can do with the file. */
@@ -369,37 +408,157 @@ class FileBrowserActivity : AppCompatActivity() {
         sheet.show()
     }
 
+    /**
+     * Loads [entry] into the right-hand pane. Text and images render inline; anything else says so and
+     * offers the download instead of showing bytes as mojibake.
+     */
     private fun preview(entry: RemoteEntry) {
         val active = session ?: return
+        val kind = previewKind(entry.name)
+        if (kind == PreviewKind.NONE) {
+            openPreviewPane(entry)
+            showPreviewNotice(getString(R.string.files_preview_unsupported))
+            return
+        }
+        if (kind == PreviewKind.IMAGE && entry.size > SftpSession.MAX_IMAGE_BYTES) {
+            openPreviewPane(entry)
+            showPreviewNotice(
+                getString(R.string.files_preview_image_too_big, SftpSession.MAX_IMAGE_BYTES / 1024 / 1024)
+            )
+            return
+        }
+
+        openPreviewPane(entry)
+        binding.textPreviewContent.setText(R.string.files_preview_loading)
+        binding.scrollPreviewText.visibility = View.VISIBLE
+        binding.imagePreview.visibility = View.GONE
         busy(true)
+
         sftpExecutor.execute {
-            val result = runCatching { active.previewText(entry.path) }
+            val result = runCatching {
+                when (kind) {
+                    PreviewKind.IMAGE -> {
+                        val (bytes, _) = active.readBytes(entry.path, SftpSession.MAX_IMAGE_BYTES)
+                        // Decoding is CPU work and belongs off the main thread, like the transfer.
+                        Loaded.Image(decodeImage(bytes))
+                    }
+                    else -> {
+                        val (text, truncated) = active.previewText(entry.path)
+                        Loaded.Text(text, truncated)
+                    }
+                }
+            }
             onUi {
                 busy(false)
+                // A second file may have been tapped while this one was loading.
+                if (previewing?.path != entry.path) return@onUi
                 result
-                    .onSuccess { (text, truncated) -> showPreview(entry, text, truncated) }
-                    .onFailure { showFailure(it, retry = null) }
+                    .onSuccess(::renderPreview)
+                    .onFailure {
+                        showPreviewNotice(it.message ?: it::class.java.simpleName)
+                        binding.scrollPreviewText.visibility = View.GONE
+                    }
             }
         }
     }
 
-    private fun showPreview(entry: RemoteEntry, text: String, truncated: Boolean) {
-        val previewBinding = DialogFilePreviewBinding.inflate(layoutInflater)
-        previewBinding.textContent.text = text.ifEmpty { getString(R.string.files_preview_empty) }
-        previewBinding.textTruncated.visibility = if (truncated) View.VISIBLE else View.GONE
-        if (truncated) {
-            previewBinding.textTruncated.text =
-                getString(R.string.files_preview_truncated, SftpSession.MAX_PREVIEW_BYTES / 1024)
-        }
-        MaterialAlertDialogBuilder(this)
-            .setTitle(entry.name)
-            .setView(previewBinding.root)
-            .setNegativeButton(R.string.files_action_download) { _, _ ->
-                pendingDownload = entry
-                createDownloadFile.launch(entry.name)
+    private fun renderPreview(loaded: Loaded) {
+        when (loaded) {
+            is Loaded.Text -> {
+                binding.imagePreview.visibility = View.GONE
+                binding.scrollPreviewText.visibility = View.VISIBLE
+                binding.textPreviewContent.text =
+                    loaded.text.ifEmpty { getString(R.string.files_preview_empty) }
+                if (loaded.truncated) {
+                    showPreviewNotice(
+                        getString(R.string.files_preview_truncated, SftpSession.MAX_PREVIEW_BYTES / 1024)
+                    )
+                }
             }
-            .setPositiveButton(R.string.action_back, null)
-            .show()
+            is Loaded.Image -> {
+                binding.scrollPreviewText.visibility = View.GONE
+                if (loaded.drawable == null) {
+                    showPreviewNotice(getString(R.string.files_preview_undecodable))
+                    return
+                }
+                binding.imagePreview.visibility = View.VISIBLE
+                binding.imagePreview.setImageDrawable(loaded.drawable)
+                // GIFs only move once told to - and only exist as a drawable from API 28.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) startIfAnimated(loaded.drawable)
+            }
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.P)
+    private fun startIfAnimated(drawable: Drawable) {
+        (drawable as? AnimatedImageDrawable)?.start()
+    }
+
+    /** ImageDecoder handles animated GIF/WebP, but only from API 28; older devices get a still frame. */
+    private fun decodeImage(bytes: ByteArray): Drawable? = runCatching {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            ImageDecoder.decodeDrawable(ImageDecoder.createSource(ByteBuffer.wrap(bytes)))
+        } else {
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                ?.let { BitmapDrawable(resources, it) }
+        }
+    }.getOrNull()
+
+    /**
+     * Shows the preview pane for [entry], shrinking the tree to a third. The split only appears now,
+     * because a third of a portrait phone is too narrow to browse a directory in.
+     */
+    private fun openPreviewPane(entry: RemoteEntry) {
+        previewing = entry
+        binding.panePreview.visibility = View.VISIBLE
+        binding.paneDivider.visibility = View.VISIBLE
+        binding.textPreviewName.text = entry.name
+        binding.textPreviewMeta.text = entry.path
+        binding.textPreviewNotice.visibility = View.GONE
+        binding.imagePreview.setImageDrawable(null)
+        binding.textPreviewContent.text = ""
+    }
+
+    private fun showPreviewNotice(message: String) {
+        binding.textPreviewNotice.visibility = View.VISIBLE
+        binding.textPreviewNotice.text = message
+    }
+
+    private fun closePreview() {
+        previewing = null
+        binding.panePreview.visibility = View.GONE
+        binding.paneDivider.visibility = View.GONE
+        // Dropping the drawable releases the decoded bitmap, which for an image is the bulk of it.
+        binding.imagePreview.setImageDrawable(null)
+        binding.textPreviewContent.text = ""
+        setTreeCollapsed(false)
+    }
+
+    private fun setTreeCollapsed(collapsed: Boolean) {
+        // Collapsing is only meaningful while something is being previewed.
+        val effective = collapsed && previewing != null
+        binding.paneList.visibility = if (effective) View.GONE else View.VISIBLE
+        binding.stripExpand.visibility = if (effective) View.VISIBLE else View.GONE
+        binding.buttonCollapseTree.visibility = if (effective) View.GONE else View.VISIBLE
+    }
+
+    private enum class PreviewKind { TEXT, IMAGE, NONE }
+
+    private sealed interface Loaded {
+        data class Text(val text: String, val truncated: Boolean) : Loaded
+        data class Image(val drawable: Drawable?) : Loaded
+    }
+
+    private fun previewKind(name: String): PreviewKind {
+        val extension = name.substringAfterLast('.', "").lowercase()
+        return when {
+            extension in IMAGE_EXTENSIONS -> PreviewKind.IMAGE
+            extension in TEXT_EXTENSIONS -> PreviewKind.TEXT
+            // Dotfiles and READMEs/Makefiles have no useful extension but are text all the same.
+            !name.substringAfterLast('/').contains('.') -> PreviewKind.TEXT
+            name.startsWith(".") -> PreviewKind.TEXT
+            else -> PreviewKind.NONE
+        }
     }
 
     private fun download(entry: RemoteEntry, destination: Uri) {
@@ -500,6 +659,14 @@ class FileBrowserActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_CONNECTION_ID = "connection_id"
+
+        private val IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "gif", "webp", "bmp", "heic")
+        private val TEXT_EXTENSIONS = setOf(
+            "txt", "md", "log", "json", "xml", "yaml", "yml", "toml", "ini", "conf", "cfg", "env",
+            "properties", "gradle", "kt", "kts", "java", "py", "js", "ts", "tsx", "jsx", "go", "rs",
+            "c", "h", "cpp", "hpp", "cs", "rb", "php", "swift", "sh", "bash", "zsh", "fish", "sql",
+            "html", "css", "scss", "lua", "vim", "diff", "patch", "csv", "tsv"
+        )
 
         private const val GLYPH_CONNECTING = "⋯"
         private const val GLYPH_EMPTY = "∅"

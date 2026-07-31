@@ -39,6 +39,9 @@ class SftpSession private constructor(
         /** Files larger than this are download-only; holding one in memory to preview it is pointless. */
         const val MAX_PREVIEW_BYTES = 512 * 1024L
 
+        /** Images are decoded whole, so the ceiling is higher but still bounded. */
+        const val MAX_IMAGE_BYTES = 12 * 1024 * 1024L
+
         /** sshj's read-ahead depth; the default of 1 makes downloads over a tunnel crawl. */
         private const val READ_AHEAD_CHUNKS = 16
 
@@ -107,16 +110,15 @@ class SftpSession private constructor(
     }
 
     /**
-     * Reads up to [MAX_PREVIEW_BYTES] of [path] as text.
+     * Reads up to [limit] bytes of [path].
      *
-     * @return the text, and whether it was cut short - the viewer says so rather than pretending the
-     *   file ends there.
+     * @return the bytes, and whether the file continues past them.
      */
     @Throws(IOException::class)
-    fun previewText(path: String): Pair<String, Boolean> {
+    fun readBytes(path: String, limit: Long): Pair<ByteArray, Boolean> {
         sftp.open(path).use { remote ->
             val length = remote.length()
-            val cap = minOf(length, MAX_PREVIEW_BYTES)
+            val cap = minOf(length, limit)
             val buffer = ByteArray(cap.toInt())
             var read = 0
             while (read < buffer.size) {
@@ -124,8 +126,20 @@ class SftpSession private constructor(
                 if (n <= 0) break
                 read += n
             }
-            return String(buffer, 0, read) to (length > cap)
+            return buffer.copyOf(read) to (length > cap)
         }
+    }
+
+    /**
+     * Reads up to [MAX_PREVIEW_BYTES] of [path] as text.
+     *
+     * @return the text, and whether it was cut short - the viewer says so rather than pretending the
+     *   file ends there.
+     */
+    @Throws(IOException::class)
+    fun previewText(path: String): Pair<String, Boolean> {
+        val (bytes, truncated) = readBytes(path, MAX_PREVIEW_BYTES)
+        return String(bytes) to truncated
     }
 
     fun close() {
