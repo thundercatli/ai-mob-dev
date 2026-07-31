@@ -140,6 +140,7 @@ object ConfigBackup {
                     put("username", connection.username)
                     put("authMethod", connection.authMethod.name)
                     put("tmuxSession", connection.tmuxSession)
+                    put("defaultPath", connection.defaultPath)
                     put("tunnelId", connection.tunnelId ?: JSONObject.NULL)
                 })
             }
@@ -219,6 +220,7 @@ object ConfigBackup {
                     privateKeyPem = null,
                     privateKeyPassphrase = null,
                     tmuxSession = json.optString("tmuxSession"),
+                    defaultPath = json.optString("defaultPath"),
                     tunnelId = json.optStringOrNull("tunnelId")
                 )
             )

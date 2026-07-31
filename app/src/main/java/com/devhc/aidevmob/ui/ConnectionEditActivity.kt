@@ -217,6 +217,7 @@ class ConnectionEditActivity : AppCompatActivity() {
         binding.editHost.setText(config.host)
         binding.editPort.setText(config.port.toString())
         binding.editTmuxSession.setText(config.tmuxSession)
+        binding.editDefaultPath.setText(config.defaultPath)
         selectedTunnelId = config.tunnelId
         // A tunnel deleted after this profile was saved leaves the lookup empty, which correctly falls
         // back to showing the stored host/port as a direct connection.
@@ -268,6 +269,7 @@ class ConnectionEditActivity : AppCompatActivity() {
             privateKeyPem = null,
             privateKeyPassphrase = null,
             tmuxSession = binding.editTmuxSession.text?.toString()?.trim().orEmpty(),
+            defaultPath = binding.editDefaultPath.text?.toString()?.trim().orEmpty(),
             tunnelId = selectedTunnelId
         )
     }

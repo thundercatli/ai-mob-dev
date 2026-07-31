@@ -163,26 +163,59 @@ class FileBrowserActivity : AppCompatActivity() {
                     ?.let { throw IOException(it) }
                 val opened = SftpSession.open(config, verifier)
                 session = opened
-                val home = opened.homePath()
-                home to opened.list(home)
+                openStart(opened)
             }
             onUi {
                 result
-                    .onSuccess { (home, listing) -> showListing(home, listing) }
+                    .onSuccess { (path, listing, warning) ->
+                        showListing(path, listing)
+                        warning?.let { Toast.makeText(this, it, Toast.LENGTH_LONG).show() }
+                    }
                     .onFailure { showFailure(it, retry = ::connect) }
             }
         }
     }
 
+    /**
+     * Opens the profile's default folder, falling back to the login directory when it is gone or
+     * unreadable - a stale path shouldn't leave the browser with nowhere to go. The warning explains
+     * the fallback rather than letting it look like the setting was ignored.
+     */
+    private fun openStart(active: SftpSession): Triple<String, List<RemoteEntry>, String?> {
+        val preferred = config.defaultPath.trim()
+        if (preferred.isNotEmpty()) {
+            runCatching { active.canonicalize(preferred).let { it to active.list(it) } }
+                .onSuccess { (path, listing) -> return Triple(path, listing, null) }
+                .onFailure { error ->
+                    val home = active.homePath()
+                    return Triple(
+                        home,
+                        active.list(home),
+                        getString(
+                            R.string.files_default_path_missing,
+                            preferred,
+                            error.message ?: error::class.java.simpleName
+                        )
+                    )
+                }
+        }
+        val home = active.homePath()
+        return Triple(home, active.list(home), null)
+    }
+
+    /** "Home" means the profile's default folder when it has one, which is the point of setting it. */
     private fun goHome() {
         val active = session ?: return
         busy(true)
         sftpExecutor.execute {
-            val result = runCatching { active.homePath().let { it to active.list(it) } }
+            val result = runCatching { openStart(active) }
             onUi {
                 busy(false)
                 result
-                    .onSuccess { (home, listing) -> showListing(home, listing) }
+                    .onSuccess { (path, listing, warning) ->
+                        showListing(path, listing)
+                        warning?.let { Toast.makeText(this, it, Toast.LENGTH_LONG).show() }
+                    }
                     .onFailure { showFailure(it, retry = ::goHome) }
             }
         }

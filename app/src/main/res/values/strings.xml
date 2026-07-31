@@ -396,4 +396,7 @@
     <string name="files_kind_link">link</string>
     <string name="files_only_hidden">Everything here is hidden (%1$d items)</string>
     <string name="files_preview_empty">This file is empty</string>
+    <string name="connection_hint_default_path">Default folder (optional)</string>
+    <string name="connection_helper_default_path">Where the file browser opens, e.g. /home/user/projects. Leave empty to start where the login lands. You can still browse anywhere from there.</string>
+    <string name="files_default_path_missing">Could not open %1$s (%2$s) — showing the login directory instead</string>
 </resources>

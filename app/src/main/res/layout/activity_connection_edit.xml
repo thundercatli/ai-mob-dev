@@ -126,6 +126,23 @@
                         android:visibility="gone" />
 
                     <com.google.android.material.textfield.TextInputLayout
+                        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        app:helperTextEnabled="true"
+                        app:helperText="@string/connection_helper_default_path"
+                        android:hint="@string/connection_hint_default_path">
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/editDefaultPath"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="textNoSuggestions"
+                            android:fontFamily="monospace"
+                            android:singleLine="true" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <com.google.android.material.textfield.TextInputLayout
                         android:id="@+id/layoutTmuxSession"
                         style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                         android:layout_width="match_parent"

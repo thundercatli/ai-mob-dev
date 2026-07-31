@@ -28,6 +28,11 @@ data class ConnectionConfig(
     /** tmux session name to attach/create (via `tmux new-session -A -s <name>`); blank = plain login shell. */
     val tmuxSession: String,
     /**
+     * Directory the file browser opens at, blank to use whatever the login lands in. Only a starting
+     * point - browsing is never restricted to it.
+     */
+    val defaultPath: String = "",
+    /**
      * Id of the frpc tunnel this connection goes through, or null for a direct connection. When set,
      * opening the terminal starts that tunnel first if it isn't already up.
      */

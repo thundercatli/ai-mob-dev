@@ -383,4 +383,7 @@
     <string name="files_kind_link">软链接</string>
     <string name="files_only_hidden">这里的 %1$d 项全部是隐藏文件</string>
     <string name="files_preview_empty">这个文件是空的</string>
+    <string name="connection_hint_default_path">默认目录（可选）</string>
+    <string name="connection_helper_default_path">文件浏览器从这里打开，例如 /home/user/projects。留空则从登录目录开始。打开后仍可浏览任意位置。</string>
+    <string name="files_default_path_missing">打不开 %1$s（%2$s），已改为显示登录目录</string>
 </resources>

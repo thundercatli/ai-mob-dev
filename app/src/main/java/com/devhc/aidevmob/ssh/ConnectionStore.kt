@@ -118,6 +118,7 @@ class ConnectionStore(context: Context) {
         put("privateKeyPem", config.privateKeyPem ?: JSONObject.NULL)
         put("privateKeyPassphrase", config.privateKeyPassphrase ?: JSONObject.NULL)
         put("tmuxSession", config.tmuxSession)
+        put("defaultPath", config.defaultPath)
         put("tunnelId", config.tunnelId ?: JSONObject.NULL)
     }
 
@@ -137,6 +138,7 @@ class ConnectionStore(context: Context) {
             privateKeyPem = json.optStringOrNull("privateKeyPem"),
             privateKeyPassphrase = json.optStringOrNull("privateKeyPassphrase"),
             tmuxSession = json.optString("tmuxSession"),
+            defaultPath = json.optString("defaultPath"),
             tunnelId = json.optStringOrNull("tunnelId")
         )
     }
