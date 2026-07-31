@@ -25,12 +25,4 @@
     <color name="terminal_key_bg">#1B241F</color>
     <color name="terminal_key_bg_active">#2F6F5E</color>
 
-    <!-- Syntax colours for the file preview. Chosen to sit beside the brand green without
-         competing with it: one cool hue for structure, one warm for literals. -->
-    <color name="syntax_keyword">#7A3E9D</color>
-    <color name="syntax_string">#1F6F43</color>
-    <color name="syntax_comment">#79877F</color>
-    <color name="syntax_number">#B2601F</color>
-    <color name="syntax_annotation">#2B5D9B</color>
-    <color name="markdown_code_bg">#EDF3EF</color>
 </resources>

@@ -49,13 +49,22 @@ class FileEntryAdapter(
             val context = binding.root.context
             val kind = kindOf(entry)
 
+            if (entry.name == PARENT) {
+                binding.imageIcon.setImageResource(R.drawable.ic_folder)
+                binding.imageIcon.setColorFilter(Kind.FOLDER.color)
+                binding.iconContainer.background = discFor(Kind.FOLDER.color)
+                binding.textName.text = context.getString(R.string.files_parent_entry)
+                binding.textMeta.text = entry.path
+                binding.textChevron.visibility = View.VISIBLE
+                binding.root.setOnClickListener { onOpen(entry) }
+                binding.root.setOnLongClickListener(null)
+                return
+            }
+
             binding.imageIcon.setImageResource(kind.icon)
             binding.imageIcon.setColorFilter(kind.color)
             // A washed-out version of the same accent, so the disc reads as a background.
-            binding.iconContainer.background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(ColorUtils.setAlphaComponent(kind.color, 0x22))
-            }
+            binding.iconContainer.background = discFor(kind.color)
 
             binding.textName.text = entry.name
             binding.textChevron.visibility = if (entry.isDirectory) View.VISIBLE else View.GONE
@@ -81,6 +90,12 @@ class FileEntryAdapter(
             }
         }
 
+        /** A washed-out version of the accent, so the disc reads as a background. */
+        private fun discFor(color: Int) = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(ColorUtils.setAlphaComponent(color, 0x22))
+        }
+
         private fun kindOf(entry: RemoteEntry): Kind = when {
             entry.isDirectory -> Kind.FOLDER
             else -> when (entry.name.substringAfterLast('.', "").lowercase()) {
@@ -93,6 +108,8 @@ class FileEntryAdapter(
     }
 
     private companion object {
+        const val PARENT = ".."
+
         val CODE_EXTENSIONS = setOf(
             "kt", "java", "py", "js", "ts", "tsx", "jsx", "go", "rs", "c", "h", "cpp", "hpp", "cs",
             "rb", "php", "swift", "sh", "bash", "zsh", "fish", "sql", "html", "css", "scss", "xml",

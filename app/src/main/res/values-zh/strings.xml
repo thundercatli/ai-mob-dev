@@ -404,4 +404,10 @@
     <string name="connection_browse_needs_save">要先保存连接才能浏览它的文件</string>
     <string name="files_action_view_source">源码</string>
     <string name="files_action_view_rendered">预览</string>
+    <string name="settings_preview_theme">代码预览配色</string>
+    <string name="settings_preview_theme_detail">只影响文件预览，不改变应用其他部分。</string>
+    <string name="settings_preview_theme_system">跟随系统</string>
+    <string name="settings_preview_theme_light">浅色</string>
+    <string name="settings_preview_theme_dark">深色</string>
+    <string name="files_parent_entry">上一级</string>
 </resources>

@@ -42,6 +42,14 @@ class AppSettings(context: Context) {
             ?.takeIf { it in 'a'..'z' } ?: DEFAULT_TMUX_PREFIX
         set(value) = prefs.edit().putString(KEY_TMUX_PREFIX, value.lowercaseChar().toString()).apply()
 
+    /**
+     * Colour scheme for the file preview, stored by name. Independent of the app's own theme because
+     * code is read for long stretches and wanting it dark says nothing about the rest of the UI.
+     */
+    var previewTheme: String
+        get() = prefs.getString(KEY_PREVIEW_THEME, null) ?: "SYSTEM"
+        set(value) = prefs.edit().putString(KEY_PREVIEW_THEME, value).apply()
+
     /** Whether a horizontal swipe across the terminal switches tmux windows. */
     var swipeSwitchesWindows: Boolean
         get() = prefs.getBoolean(KEY_SWIPE_WINDOWS, true)
@@ -66,5 +74,6 @@ class AppSettings(context: Context) {
         private const val KEY_UPDATE_TOKEN = "updateToken"
         private const val KEY_TMUX_PREFIX = "tmuxPrefix"
         private const val KEY_SWIPE_WINDOWS = "swipeSwitchesWindows"
+        private const val KEY_PREVIEW_THEME = "previewTheme"
     }
 }

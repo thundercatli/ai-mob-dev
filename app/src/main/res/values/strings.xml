@@ -417,4 +417,10 @@
     <string name="connection_browse_needs_save">The connection has to be saved before its files can be browsed</string>
     <string name="files_action_view_source">Source</string>
     <string name="files_action_view_rendered">Rendered</string>
+    <string name="settings_preview_theme">Code preview colours</string>
+    <string name="settings_preview_theme_detail">Applies to the file preview only; the rest of the app is unaffected.</string>
+    <string name="settings_preview_theme_system">Follow the system</string>
+    <string name="settings_preview_theme_light">Light</string>
+    <string name="settings_preview_theme_dark">Dark</string>
+    <string name="files_parent_entry">Up one level</string>
 </resources>

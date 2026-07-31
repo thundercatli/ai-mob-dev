@@ -211,6 +211,24 @@ class SettingsFragment : Fragment() {
         binding.buttonFontSmaller.setOnClickListener { adjustFontSize(-1) }
         binding.buttonFontBigger.setOnClickListener { adjustFontSize(+1) }
 
+        val themeModes = PreviewTheme.Companion.Mode.entries
+        val themeLabels = themeModes.map {
+            getString(
+                when (it) {
+                    PreviewTheme.Companion.Mode.SYSTEM -> R.string.settings_preview_theme_system
+                    PreviewTheme.Companion.Mode.LIGHT -> R.string.settings_preview_theme_light
+                    PreviewTheme.Companion.Mode.DARK -> R.string.settings_preview_theme_dark
+                }
+            )
+        }
+        binding.dropdownPreviewTheme.setSimpleItems(themeLabels.toTypedArray())
+        binding.dropdownPreviewTheme.setText(
+            themeLabels[PreviewTheme.Companion.Mode.from(settings.previewTheme).ordinal], false
+        )
+        binding.dropdownPreviewTheme.setOnItemClickListener { _, _, position, _ ->
+            settings.previewTheme = themeModes[position].name
+        }
+
         // Ctrl-A..Ctrl-Z: tmux only accepts a letter as its prefix, and remaps to Ctrl-A are common.
         val prefixLabels = ('a'..'z').map { "Ctrl-${it.uppercaseChar()}" }
         binding.dropdownTmuxPrefix.setSimpleItems(prefixLabels.toTypedArray())

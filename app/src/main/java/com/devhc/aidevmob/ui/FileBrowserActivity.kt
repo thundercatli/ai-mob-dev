@@ -29,6 +29,7 @@ import com.devhc.aidevmob.R
 import com.devhc.aidevmob.databinding.ActivityFileBrowserBinding
 import com.devhc.aidevmob.databinding.DialogFileActionsBinding
 import com.devhc.aidevmob.frp.TunnelGate
+import com.devhc.aidevmob.settings.AppSettings
 import com.devhc.aidevmob.ssh.ConnectionConfig
 import com.devhc.aidevmob.ssh.ConnectionStore
 import com.devhc.aidevmob.ssh.CredentialStore
@@ -62,6 +63,7 @@ class FileBrowserActivity : AppCompatActivity() {
     private lateinit var binding: ActivityFileBrowserBinding
     private lateinit var config: ConnectionConfig
     private lateinit var adapter: FileEntryAdapter
+    private lateinit var previewTheme: PreviewTheme
 
     /**
      * All SFTP work runs here, one operation at a time: [SftpSession] is not thread-safe, and a single
@@ -131,6 +133,15 @@ class FileBrowserActivity : AppCompatActivity() {
         binding.toolbar.subtitle = config.displayName
         binding.toolbar.setNavigationOnClickListener { finish() }
         binding.toolbar.setOnMenuItemClickListener(::onMenuItemClick)
+
+        previewTheme = PreviewTheme.resolve(
+            this,
+            PreviewTheme.Companion.Mode.from(AppSettings(applicationContext).previewTheme)
+        )
+        binding.scrollPreviewText.setBackgroundColor(previewTheme.background)
+        binding.textPreviewContent.setTextColor(previewTheme.foreground)
+        binding.textGutter.setTextColor(previewTheme.gutter)
+        binding.textGutter.setBackgroundColor(previewTheme.gutterBackground)
 
         adapter = FileEntryAdapter(onOpen = ::openEntry, onDetails = ::showActions)
         binding.recyclerFiles.layoutManager = LinearLayoutManager(this)
@@ -331,7 +342,12 @@ class FileBrowserActivity : AppCompatActivity() {
                     }
                 }
             )
-        adapter.submit(visible)
+        // A ".." row: the fastest way up is the one that is already under your thumb.
+        val parent = parentPath(currentPath)
+        adapter.submit(
+            if (parent == null) visible
+            else listOf(parentEntry(parent)) + visible
+        )
 
         when {
             visible.isNotEmpty() -> hideState()
@@ -349,6 +365,17 @@ class FileBrowserActivity : AppCompatActivity() {
     }
 
     /** One tappable chip per path segment, so any ancestor is a single tap away. */
+    /** Synthetic row standing for the parent directory; ".." can never be a real entry name. */
+    private fun parentEntry(parent: String) = RemoteEntry(
+        name = "..",
+        path = parent,
+        isDirectory = true,
+        isLink = false,
+        size = 0,
+        modified = 0,
+        permissions = 0
+    )
+
     private fun buildBreadcrumbs(path: String) {
         binding.containerCrumbs.removeAllViews()
         addCrumb("/", "/")
@@ -510,6 +537,7 @@ class FileBrowserActivity : AppCompatActivity() {
             is Loaded.Text -> {
                 binding.imagePreview.visibility = View.GONE
                 binding.scrollPreviewText.visibility = View.VISIBLE
+                showGutter(loaded.text)
                 binding.textPreviewContent.text =
                     loaded.text.ifBlank { getString(R.string.files_preview_empty) }
                 if (loaded.truncated) {
@@ -649,26 +677,35 @@ class FileBrowserActivity : AppCompatActivity() {
         isMarkdown(fileName) && !markdownAsSource -> MarkdownRenderer.render(
             text,
             MarkdownRenderer.Palette(
-                heading = themeColor(androidx.appcompat.R.attr.colorPrimary),
-                code = getColor(R.color.syntax_string),
-                codeBackground = getColor(R.color.markdown_code_bg),
-                quote = themeColor(com.google.android.material.R.attr.colorOnSurfaceVariant),
-                link = themeColor(androidx.appcompat.R.attr.colorPrimary),
-                rule = themeColor(com.google.android.material.R.attr.colorOutline)
+                heading = previewTheme.markdown.heading,
+                code = previewTheme.markdown.code,
+                codeBackground = previewTheme.markdown.codeBackground,
+                quote = previewTheme.markdown.quote,
+                link = previewTheme.markdown.link,
+                rule = previewTheme.markdown.rule
             )
         )
         SyntaxHighlighter.canHighlight(fileName) -> SyntaxHighlighter.highlight(
             text,
             fileName,
-            SyntaxHighlighter.Palette(
-                keyword = getColor(R.color.syntax_keyword),
-                string = getColor(R.color.syntax_string),
-                comment = getColor(R.color.syntax_comment),
-                number = getColor(R.color.syntax_number),
-                annotation = getColor(R.color.syntax_annotation)
-            )
+            previewTheme.syntax
         )
         else -> text
+    }
+
+    /**
+     * Numbers the lines beside the code. Rendered Markdown gets none - there are no source lines to
+     * point at once it is prose.
+     */
+    private fun showGutter(text: CharSequence) {
+        val renderedMarkdown = previewing?.let { isMarkdown(it.name) && !markdownAsSource } ?: false
+        if (renderedMarkdown) {
+            binding.textGutter.visibility = View.GONE
+            return
+        }
+        val lines = text.count { it == '\n' } + 1
+        binding.textGutter.visibility = View.VISIBLE
+        binding.textGutter.text = (1..lines).joinToString("\n")
     }
 
     private fun isMarkdown(fileName: String): Boolean =
