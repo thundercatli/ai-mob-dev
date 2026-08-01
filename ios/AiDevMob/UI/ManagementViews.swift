@@ -34,9 +34,13 @@ struct ConnectionListView: View {
                             .foregroundColor(.primary)
                             .font(.headline)
                         HStack(spacing: 4) {
-                            Text("\(config.host):\(config.port)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                            // Show "host:port" only when host is non-empty; a bare port number
+                            // with no host is meaningless to the user.
+                            if !config.host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                Text("\(config.host):\(config.port)")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
                             if !config.tmuxSession.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                                 Text("·")
                                     .foregroundColor(.secondary)
@@ -135,7 +139,7 @@ struct ConnectionEditView: View {
             Section("基本信息") {
                 TextField("名称", text: $config.name)
                 TextField("主机", text: $config.host)
-                TextField("端口", value: $config.port, format: .number)
+                TextField("端口", value: $config.port, format: .number.grouping(.never))
                     .keyboardType(.numberPad)
             }
 
@@ -840,7 +844,7 @@ struct TunnelEditView: View {
             Section("STCP 代理") {
                 TextField("服务名（serverName）", text: $tunnel.serverName)
                 SecureField("密钥（secretKey）", text: $tunnel.secretKey)
-                TextField("本地端口（bindPort）", value: $tunnel.bindPort, format: .number)
+                TextField("本地端口（bindPort）", value: $tunnel.bindPort, format: .number.grouping(.never))
                     .keyboardType(.numberPad)
             }
         }
@@ -957,7 +961,7 @@ struct ServerEditView: View {
                     .keyboardType(.URL)
                     .autocapitalization(.none)
                     .disableAutocorrection(true)
-                TextField("端口", value: $server.serverPort, format: .number)
+                TextField("端口", value: $server.serverPort, format: .number.grouping(.never))
                     .keyboardType(.numberPad)
             }
 
