@@ -4,6 +4,10 @@ import SwiftUI
 
 struct ConnectionListView: View {
     let onConnect: (ConnectionConfig) -> Void
+    /// When embedded in the iPad sidebar, the sidebar already owns a NavigationStack, so this
+    /// view skips its own outer NavigationStack (and its navigationTitle, which the sidebar
+    /// sets). Defaults to false so iPhone behaviour is unchanged.
+    var embeddedInSplit: Bool = false
 
     @State private var connections: [ConnectionConfig] = []
     @State private var editingItem: ConnectionConfig?
@@ -11,77 +15,83 @@ struct ConnectionListView: View {
     private let store = ConnectionStore()
 
     var body: some View {
-        NavigationStack {
-            List {
-                ForEach(connections) { config in
-                    Button {
-                        onConnect(config)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(config.displayName)
-                                .foregroundColor(.primary)
-                                .font(.headline)
-                            HStack(spacing: 4) {
-                                Text("\(config.host):\(config.port)")
+        if embeddedInSplit {
+            content
+        } else {
+            NavigationStack { content.navigationTitle("连接") }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        List {
+            ForEach(connections) { config in
+                Button {
+                    onConnect(config)
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(config.displayName)
+                            .foregroundColor(.primary)
+                            .font(.headline)
+                        HStack(spacing: 4) {
+                            Text("\(config.host):\(config.port)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            if !config.tmuxSession.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                Text("·")
+                                    .foregroundColor(.secondary)
+                                Text("tmux")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
-                                if !config.tmuxSession.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                    Text("·")
-                                        .foregroundColor(.secondary)
-                                    Text("tmux")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
                             }
                         }
                     }
-                    .swipeActions(edge: .trailing) {
-                        Button(role: .destructive) {
-                            store.delete(id: config.id)
-                            load()
-                        } label: {
-                            Label("删除", systemImage: "trash")
-                        }
-                        Button {
-                            editingItem = config
-                        } label: {
-                            Label("编辑", systemImage: "pencil")
-                        }
-                        .tint(.orange)
-                    }
                 }
-            }
-            .navigationTitle("连接")
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        editingItem = ConnectionConfig(
-                            name: "",
-                            host: "",
-                            port: 22,
-                            username: "",
-                            authMethod: .password,
-                            password: nil,
-                            privateKeyPem: nil,
-                            privateKeyPassphrase: nil,
-                            tmuxSession: ""
-                        )
-                    } label: {
-                        Image(systemName: "plus")
-                    }
-                }
-            }
-            .sheet(item: $editingItem) { config in
-                NavigationStack {
-                    ConnectionEditView(config: config, onSave: { saved in
-                        store.upsert(saved)
-                        editingItem = nil
+                .swipeActions(edge: .trailing) {
+                    Button(role: .destructive) {
+                        store.delete(id: config.id)
                         load()
-                    })
+                    } label: {
+                        Label("删除", systemImage: "trash")
+                    }
+                    Button {
+                        editingItem = config
+                    } label: {
+                        Label("编辑", systemImage: "pencil")
+                    }
+                    .tint(.orange)
                 }
             }
-            .onAppear(perform: load)
         }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    editingItem = ConnectionConfig(
+                        name: "",
+                        host: "",
+                        port: 22,
+                        username: "",
+                        authMethod: .password,
+                        password: nil,
+                        privateKeyPem: nil,
+                        privateKeyPassphrase: nil,
+                        tmuxSession: ""
+                    )
+                } label: {
+                    Image(systemName: "plus")
+                }
+            }
+        }
+        .sheet(item: $editingItem) { config in
+            NavigationStack {
+                ConnectionEditView(config: config, onSave: { saved in
+                    store.upsert(saved)
+                    editingItem = nil
+                    load()
+                })
+            }
+        }
+        .onAppear(perform: load)
     }
 
     private func load() {
@@ -373,66 +383,76 @@ private struct TmuxSessionList: Identifiable {
 // MARK: - CredentialListView
 
 struct CredentialListView: View {
+    /// When embedded in the iPad sidebar, the sidebar owns the NavigationStack; this view then
+    /// skips its own outer NavigationStack and navigationTitle. Defaults to false.
+    var embeddedInSplit: Bool = false
+
     @State private var credentials: [Credential] = []
     @State private var editingItem: Credential?
 
     private let store = CredentialStore()
 
     var body: some View {
-        NavigationStack {
-            List {
-                ForEach(credentials) { cred in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(cred.displayName)
-                            .font(.headline)
-                        Text(cred.authMethod == .password ? "密码" : "私钥")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .swipeActions(edge: .trailing) {
-                        Button(role: .destructive) {
-                            store.delete(id: cred.id)
-                            load()
-                        } label: {
-                            Label("删除", systemImage: "trash")
-                        }
-                        Button {
-                            editingItem = cred
-                        } label: {
-                            Label("编辑", systemImage: "pencil")
-                        }
-                        .tint(.orange)
-                    }
-                }
-            }
-            .navigationTitle("凭证")
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        editingItem = Credential(
-                            name: "",
-                            username: "",
-                            authMethod: .password,
-                            password: nil,
-                            privateKeyPem: nil,
-                            privateKeyPassphrase: nil
-                        )
-                    } label: {
-                        Image(systemName: "plus")
-                    }
-                }
-            }
-            .sheet(item: $editingItem) { cred in
-                NavigationStack {
-                    CredentialEditView(credential: cred, onSave: { saved in
-                        store.upsert(saved)
-                        editingItem = nil
-                        load()
-                    })
-                }
-            }
-            .onAppear(perform: load)
+        if embeddedInSplit {
+            content
+        } else {
+            NavigationStack { content.navigationTitle("凭证") }
         }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        List {
+            ForEach(credentials) { cred in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(cred.displayName)
+                        .font(.headline)
+                    Text(cred.authMethod == .password ? "密码" : "私钥")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .swipeActions(edge: .trailing) {
+                    Button(role: .destructive) {
+                        store.delete(id: cred.id)
+                        load()
+                    } label: {
+                        Label("删除", systemImage: "trash")
+                    }
+                    Button {
+                        editingItem = cred
+                    } label: {
+                        Label("编辑", systemImage: "pencil")
+                    }
+                    .tint(.orange)
+                }
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    editingItem = Credential(
+                        name: "",
+                        username: "",
+                        authMethod: .password,
+                        password: nil,
+                        privateKeyPem: nil,
+                        privateKeyPassphrase: nil
+                    )
+                } label: {
+                    Image(systemName: "plus")
+                }
+            }
+        }
+        .sheet(item: $editingItem) { cred in
+            NavigationStack {
+                CredentialEditView(credential: cred, onSave: { saved in
+                    store.upsert(saved)
+                    editingItem = nil
+                    load()
+                })
+            }
+        }
+        .onAppear(perform: load)
     }
 
     private func load() {
@@ -502,6 +522,10 @@ struct CredentialEditView: View {
 // MARK: - TunnelListView
 
 struct TunnelListView: View {
+    /// When embedded in the iPad sidebar, the sidebar owns the NavigationStack; this view then
+    /// skips its own outer NavigationStack and navigationTitle. Defaults to false.
+    var embeddedInSplit: Bool = false
+
     @State private var tunnels: [FrpcTunnel] = []
     @State private var editingItem: FrpcTunnel?
     @State private var statusMap: [String: TunnelState] = [:]
@@ -514,61 +538,67 @@ struct TunnelListView: View {
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        NavigationStack {
-            List {
-                ForEach(tunnels) { tunnel in
-                    TunnelRowView(
-                        tunnel: tunnel,
-                        status: statusMap[tunnel.id, default: .stopped],
-                        serverStore: serverStore,
-                        runtime: runtime
-                    )
-                    .swipeActions(edge: .trailing) {
-                        Button(role: .destructive) {
-                            runtime.stop(tunnel.id)
-                            tunnelStore.delete(id: tunnel.id)
-                            load()
-                        } label: {
-                            Label("删除", systemImage: "trash")
-                        }
-                        Button {
-                            editingItem = tunnel
-                        } label: {
-                            Label("编辑", systemImage: "pencil")
-                        }
-                        .tint(.orange)
-                    }
-                }
-            }
-            .navigationTitle("隧道")
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        editingItem = FrpcTunnel(
-                            name: "",
-                            serverId: nil,
-                            secretKey: "",
-                            serverName: "",
-                            bindPort: 0
-                        )
-                    } label: {
-                        Image(systemName: "plus")
-                    }
-                }
-            }
-            .sheet(item: $editingItem) { tunnel in
-                NavigationStack {
-                    TunnelEditView(tunnel: tunnel, onSave: { saved in
-                        tunnelStore.upsert(saved)
-                        editingItem = nil
+        if embeddedInSplit {
+            content
+        } else {
+            NavigationStack { content.navigationTitle("隧道") }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        List {
+            ForEach(tunnels) { tunnel in
+                TunnelRowView(
+                    tunnel: tunnel,
+                    status: statusMap[tunnel.id, default: .stopped],
+                    serverStore: serverStore,
+                    runtime: runtime
+                )
+                .swipeActions(edge: .trailing) {
+                    Button(role: .destructive) {
+                        runtime.stop(tunnel.id)
+                        tunnelStore.delete(id: tunnel.id)
                         load()
-                    })
+                    } label: {
+                        Label("删除", systemImage: "trash")
+                    }
+                    Button {
+                        editingItem = tunnel
+                    } label: {
+                        Label("编辑", systemImage: "pencil")
+                    }
+                    .tint(.orange)
                 }
             }
-            .onAppear(perform: load)
-            .onReceive(timer) { _ in
-                refreshStatuses()
+        }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    editingItem = FrpcTunnel(
+                        name: "",
+                        serverId: nil,
+                        secretKey: "",
+                        serverName: "",
+                        bindPort: 0
+                    )
+                } label: {
+                    Image(systemName: "plus")
+                }
             }
+        }
+        .sheet(item: $editingItem) { tunnel in
+            NavigationStack {
+                TunnelEditView(tunnel: tunnel, onSave: { saved in
+                    tunnelStore.upsert(saved)
+                    editingItem = nil
+                    load()
+                })
+            }
+        }
+        .onAppear(perform: load)
+        .onReceive(timer) { _ in
+            refreshStatuses()
         }
     }
 
@@ -737,64 +767,74 @@ struct TunnelEditView: View {
 // MARK: - ServerListView
 
 struct ServerListView: View {
+    /// When embedded in the iPad sidebar, the sidebar owns the NavigationStack; this view then
+    /// skips its own outer NavigationStack and navigationTitle. Defaults to false.
+    var embeddedInSplit: Bool = false
+
     @State private var servers: [FrpsServer] = []
     @State private var editingItem: FrpsServer?
 
     private let store = FrpsServerStore()
 
     var body: some View {
-        NavigationStack {
-            List {
-                ForEach(servers) { server in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(server.displayName)
-                            .font(.headline)
-                        Text("\(server.serverAddr):\(server.serverPort)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .swipeActions(edge: .trailing) {
-                        Button(role: .destructive) {
-                            store.delete(id: server.id)
-                            load()
-                        } label: {
-                            Label("删除", systemImage: "trash")
-                        }
-                        Button {
-                            editingItem = server
-                        } label: {
-                            Label("编辑", systemImage: "pencil")
-                        }
-                        .tint(.orange)
-                    }
-                }
-            }
-            .navigationTitle("服务器")
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        editingItem = FrpsServer(
-                            name: "",
-                            serverAddr: "",
-                            serverPort: 7000,
-                            authToken: nil
-                        )
-                    } label: {
-                        Image(systemName: "plus")
-                    }
-                }
-            }
-            .sheet(item: $editingItem) { server in
-                NavigationStack {
-                    ServerEditView(server: server, onSave: { saved in
-                        store.upsert(saved)
-                        editingItem = nil
-                        load()
-                    })
-                }
-            }
-            .onAppear(perform: load)
+        if embeddedInSplit {
+            content
+        } else {
+            NavigationStack { content.navigationTitle("服务器") }
         }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        List {
+            ForEach(servers) { server in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(server.displayName)
+                        .font(.headline)
+                    Text("\(server.serverAddr):\(server.serverPort)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .swipeActions(edge: .trailing) {
+                    Button(role: .destructive) {
+                        store.delete(id: server.id)
+                        load()
+                    } label: {
+                        Label("删除", systemImage: "trash")
+                    }
+                    Button {
+                        editingItem = server
+                    } label: {
+                        Label("编辑", systemImage: "pencil")
+                    }
+                    .tint(.orange)
+                }
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    editingItem = FrpsServer(
+                        name: "",
+                        serverAddr: "",
+                        serverPort: 7000,
+                        authToken: nil
+                    )
+                } label: {
+                    Image(systemName: "plus")
+                }
+            }
+        }
+        .sheet(item: $editingItem) { server in
+            NavigationStack {
+                ServerEditView(server: server, onSave: { saved in
+                    store.upsert(saved)
+                    editingItem = nil
+                    load()
+                })
+            }
+        }
+        .onAppear(perform: load)
     }
 
     private func load() {

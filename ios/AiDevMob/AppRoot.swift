@@ -8,56 +8,66 @@ extension TunnelRuntime {
     static let shared = TunnelRuntime()
 }
 
-// MARK: - AppRootCoordinator
+// MARK: - Presentation models
 
-/// End-to-end coordinator that wires tunnel startup + SSH connection + terminal display together.
+/// One active terminal session surfaced to SwiftUI. `Identifiable` so it can drive
+/// `.fullScreenCover(item:)` (iPhone) and a detail-column binding (iPad). The view controller
+/// is owned by the coordinator for the whole session; SwiftUI only *displays* it via
+/// `TerminalHostingView`, never recreates it — so a SwiftUI re-render cannot interrupt the
+/// SSH channel or reset the terminal.
+struct TerminalHost: Identifiable {
+    let id = UUID()
+    let vc: TerminalViewController
+    let config: ConnectionConfig
+}
+
+/// Title/message pair for the global error alert. Struct (not tuple) so it conforms to
+/// `Identifiable` for `.alert(item:)`.
+struct ErrorMessage: Identifiable {
+    let id = UUID()
+    let title: String
+    let message: String
+}
+
+// MARK: - AppCoordinator
+
+/// End-to-end coordinator that wires tunnel startup + SSH connection + terminal display together,
+/// now surfaced as an `ObservableObject` so SwiftUI (RootView) can present the terminal and
+/// alerts reactively.
 ///
 /// Lifecycle mirrors Android's `TerminalActivity`:
 /// 1. Resolve credential from `ConnectionConfig`.
 /// 2. If a tunnel is configured, start it and wait for it to reach `.running`.
 /// 3. Create `SshTerminalConnector` and `TerminalViewController`, wire I/O closures.
-/// 4. Push the terminal screen.
+/// 4. Publish the terminal VC (`activeTerminal`) so the view layer shows it — full-screen on
+///    iPhone, detail column on iPad.
 /// 5. On disconnect: show status banner, schedule reconnect with exponential backoff (max 5 attempts).
 ///
-/// Usage in AppDelegate:
-/// ```
-/// let coordinator = AppRootCoordinator()
-/// window?.rootViewController = coordinator.rootViewController
-/// ```
-final class AppRootCoordinator: ObservableObject {
+/// The coordinator owns the terminal VC for its whole lifetime. Closing the terminal
+/// (`onClose` / setting `activeTerminal = nil`) does NOT destroy the VC immediately — the SSH
+/// teardown is triggered via the VC's `onDisconnect` closure, mirroring Android's
+/// `disconnectInBackground()`.
+final class AppCoordinator: ObservableObject {
 
-    // MARK: Public interface
+    // MARK: Published state (drives SwiftUI)
 
-    /// The root navigation controller hosting the SwiftUI tab view.
-    /// Set this as `window?.rootViewController` in AppDelegate.
-    var rootViewController: UIViewController {
-        navigationController
-    }
+    /// The currently-active terminal, or nil when none is shown. Setting this is what makes the
+    /// terminal appear/disappear on screen — full-screen cover on iPhone, detail column on iPad.
+    @Published var activeTerminal: TerminalHost?
+
+    /// Global error alert. RootView binds `.alert(item:)` to this.
+    @Published var errorMessage: ErrorMessage?
 
     // MARK: Private state
 
-    private let navigationController: UINavigationController
     private var terminalVC: TerminalViewController?
     private var connector: SshTerminalConnector?
     private var reconnectAttempts = 0
     private let maxReconnectAttempts = 5
 
-    // MARK: Init
-
-    init() {
-        // Initialize navigationController first so the onConnect closure (which captures self)
-        // is created only after every stored property is definite-initialized.
-        navigationController = UINavigationController()
-        navigationController.isNavigationBarHidden = true
-        let hosting = UIHostingController(rootView: MainTabView(onConnect: { [weak self] config in
-            self?.connect(config)
-        }))
-        navigationController.setViewControllers([hosting], animated: false)
-    }
-
     // MARK: Connection flow
 
-    /// Entry point: resolve credential, start tunnel (if any), open SSH, push terminal.
+    /// Entry point: resolve credential, start tunnel (if any), open SSH, present terminal.
     /// Mirrors Android's `ensureTunnelThenConnect()` + `connectSsh()`.
     func connect(_ config: ConnectionConfig) {
         reconnectAttempts = 0
@@ -65,7 +75,7 @@ final class AppRootCoordinator: ObservableObject {
         // 1. Resolve credential.
         let resolved = CredentialStore().resolve(config)
         guard !resolved.username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            showAlert(title: "无法连接", message: "用户名不能为空，请检查凭证配置。")
+            errorMessage = ErrorMessage(title: "无法连接", message: "用户名不能为空，请检查凭证配置。")
             return
         }
 
@@ -78,11 +88,11 @@ final class AppRootCoordinator: ObservableObject {
         // 3. If a tunnel is configured and not already running, start it.
         if let tunnelId = sshConfig.tunnelId, !TunnelRuntime.shared.isRunning(tunnelId) {
             guard let tunnel = FrpcTunnelStore().get(id: tunnelId) else {
-                showAlert(title: "无法连接", message: "关联的隧道配置不存在或被删除。")
+                errorMessage = ErrorMessage(title: "无法连接", message: "关联的隧道配置不存在或被删除。")
                 return
             }
             guard let server = FrpsServerStore().get(id: tunnel.serverId) else {
-                showAlert(title: "无法连接", message: "隧道指向的 frps 服务器配置不存在。")
+                errorMessage = ErrorMessage(title: "无法连接", message: "隧道指向的 frps 服务器配置不存在。")
                 return
             }
 
@@ -99,7 +109,7 @@ final class AppRootCoordinator: ObservableObject {
             // Show tunnel-starting status immediately.
             let vc = makeTerminalVC(config: sshConfig)
             vc.setStatus(.tunnelStarting)
-            pushTerminal(vc)
+            presentTerminal(vc, config: sshConfig)
 
             // Start tunnel and await running state.
             Task { [weak self] in
@@ -121,11 +131,11 @@ final class AppRootCoordinator: ObservableObject {
             // No tunnel path or tunnel already running – go straight to SSH.
             let vc = makeTerminalVC(config: sshConfig)
             vc.setStatus(.connecting)
-            pushTerminal(vc)
+            presentTerminal(vc, config: sshConfig)
 
             Task { [weak self] in
                 guard let self else { return }
-                await startSsh(config: sshConfig, terminalVC: vc)
+                await self.startSsh(config: sshConfig, terminalVC: vc)
             }
         }
     }
@@ -211,28 +221,24 @@ final class AppRootCoordinator: ObservableObject {
 
     // MARK: - Private helpers
 
-    /// Creates a terminal VC with closures wired to the connector. Does NOT push it.
+    /// Creates a terminal VC with closures wired to the connector. Does NOT present it.
     private func makeTerminalVC(config: ConnectionConfig) -> TerminalViewController {
         let vc = TerminalViewController(config: config)
 
         vc.onResize = { [weak self] cols, rows in
-            guard let connector = self?.connector else {
-                print("[AiDevMob] onResize: no connector, skipping \(cols)x\(rows)")
-                return
-            }
+            guard let connector = self?.connector else { return }
             Task {
-                do {
-                    try await connector.resize(cols: cols, rows: rows)
-                    print("[AiDevMob] PTY resized to \(cols)x\(rows)")
-                } catch {
-                    print("[AiDevMob] PTY resize failed: \(error)")
-                }
+                try? await connector.resize(cols: cols, rows: rows)
             }
         }
 
         vc.onReconnect = { [weak self] in
-            guard let self, let config = self.terminalVC?.config ?? self.lastConfig(from: config) else { return }
-            self.reconnect(config)
+            guard let self else { return }
+            // Reconstruct the profile from the active terminal host (it carries the sshConfig
+            // the session actually connected with, including any tunnel redirection).
+            if let config = self.activeTerminal?.config {
+                self.reconnect(config)
+            }
         }
 
         vc.onDisconnect = { [weak self] in
@@ -243,19 +249,20 @@ final class AppRootCoordinator: ObservableObject {
             }
         }
 
-        // Back button: pop the terminal screen back to the management tabs.
+        // Back button: drop the active terminal so SwiftUI dismisses it (fullScreenCover on
+        // iPhone, detail placeholder on iPad). The VC's own viewWillDisappear already fired
+        // onDisconnect for the SSH teardown.
         vc.onClose = { [weak self] in
-            guard let self else { return }
-            self.navigationController.popViewController(animated: true)
+            self?.activeTerminal = nil
         }
 
         return vc
     }
 
-    /// Pushes the terminal VC onto the navigation stack (replacing any existing terminal).
-    private func pushTerminal(_ vc: TerminalViewController) {
+    /// Publishes the terminal VC so SwiftUI shows it. Replaces the old `pushViewController`.
+    private func presentTerminal(_ vc: TerminalViewController, config: ConnectionConfig) {
         terminalVC = vc
-        navigationController.pushViewController(vc, animated: true)
+        activeTerminal = TerminalHost(vc: vc, config: config)
     }
 
     /// Starts the SSH connector, wires send, and feeds output into the terminal VC.
@@ -269,7 +276,7 @@ final class AppRootCoordinator: ObservableObject {
         connector.onHostKeyMismatch = { [weak self] host, port in
             guard let self else { return }
             Task { @MainActor in
-                self.showAlert(
+                self.errorMessage = ErrorMessage(
                     title: "主机密钥变更",
                     message: "\(host):\(port) 的主机密钥与首次连接时不同，连接已拒绝。"
                 )
@@ -316,21 +323,4 @@ final class AppRootCoordinator: ObservableObject {
             terminalVC.setStatus(.failed("连接失败：\(error.localizedDescription)"))
         }
     }
-
-    /// Fallback: if terminalVC was deallocated, reconstruct config from the profile.
-    private func lastConfig(from original: ConnectionConfig) -> ConnectionConfig? {
-        ConnectionStore().get(id: original.id) ?? original
-    }
-
-    private func showAlert(title: String, message: String) {
-        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "确定", style: .default))
-        navigationController.topViewController?.present(alert, animated: true)
-    }
 }
-
-// MARK: - SwiftUI ConnectionListView onConnect integration extension
-
-/// A convenience so ManagementViews needs no back-reference to the coordinator.
-/// The MainTabView already takes `onConnect` – the coordinator sets it when creating the
-/// hosting controller. Nothing extra needed.

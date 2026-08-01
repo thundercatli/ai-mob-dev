@@ -1,4 +1,5 @@
 import UIKit
+import SwiftUI
 
 /// App entry point. UIKit lifecycle (the terminal is a UIKit `TerminalView`; the management
 /// screens are SwiftUI hosted in a `UIHostingController`). A `@main`-equivalent is required
@@ -6,16 +7,14 @@ import UIKit
 @main
 final class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
-    private var coordinator: AppRootCoordinator?
 
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
-        let coordinator = AppRootCoordinator()
-        self.coordinator = coordinator
+        let coordinator = AppCoordinator()
         window = UIWindow(frame: UIScreen.main.bounds)
-        window?.rootViewController = coordinator.rootViewController
+        window?.rootViewController = UIHostingController(rootView: RootView(coordinator: coordinator))
         window?.makeKeyAndVisible()
         return true
     }

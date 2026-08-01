@@ -270,6 +270,13 @@ final class SshTerminalConnector {
                     try? await outbound.changeSize(cols: cols, rows: rows, pixelWidth: 0, pixelHeight: 0)
                 }
 
+                // Give the login shell a moment to be ready before sending the startup command.
+                // The PTY channel opens before sshd has fully started the shell; writing too
+                // early can lose bytes or interleave with the shell's banner, leaving fragments
+                // of the command visible on screen. A short fixed wait is simpler and avoids
+                // consuming from the inbound stream (which can only be iterated once).
+                try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
+
                 // Mirrors Android's sendStartupCommand: set a UTF-8 locale (fallback for sshd
                 // refusing to forward LANG) and optionally attach/create the tmux session.
                 try await outbound.write(ByteBuffer(string: startupCommand))

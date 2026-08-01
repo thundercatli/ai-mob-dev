@@ -87,7 +87,7 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate, UIGe
     private let titleLabel = UILabel()
     private let statusDot = UIView()
     private let statusText = UILabel()
-    private let terminalView = TerminalView(frame: .zero)
+    private let terminalView = PasteAwareTerminalView(frame: .zero)
     /// The extra-keys row, pinned below the terminal (so it reads as part of the terminal). It
     /// scrolls horizontally — there are more keys than fit on a phone. Both terminalView and this
     /// bar sit above `keyboardLayoutGuide.topAnchor`, so the whole cluster lifts above the
@@ -99,6 +99,9 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate, UIGe
     /// extraKeysBar's bottom constraint; its constant is lifted by the keyboard height so the
     /// bar (and the terminal above it) rise above the keyboard.
     private var extraKeysBottomConstraint: NSLayoutConstraint?
+    /// extraKeysBar's height constraint; set to barHeight + the bottom safe-area inset once known
+    /// so the keys sit above the home indicator while the black fill extends under it.
+    private var extraKeysHeightConstraint: NSLayoutConstraint?
 
     /// Ctrl modifier toggled from the extra-keys row. Applied to soft-keyboard input in
     /// `send(source:data:)`, mirroring Android's `AppTerminalViewClient.ctrlDown`.
@@ -142,26 +145,19 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate, UIGe
         super.viewDidAppear(animated)
         // Like Android's `requestFocus()`: opens the soft keyboard right away.
         terminalView.becomeFirstResponder()
-        // Diagnostic: dump layout state now, and again after the keyboard appears, to see if
-        // the terminal frame + PTY size actually track the keyboard.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            self?.dumpLayout("before-kb")
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-            self?.dumpLayout("after-kb")
-        }
-    }
-
-    private func dumpLayout(_ tag: String) {
-        let term = terminalView.getTerminal()
-        print("[AiDevMob] layout[\(tag)] terminalFrame=\(terminalView.frame) cols=\(term.cols) rows=\(term.rows)")
-        print("[AiDevMob] layout[\(tag)] extraKeysBar.frame=\(extraKeysBar.frame)")
-        print("[AiDevMob] layout[\(tag)] keyboardLayoutGuide.top=\(view.keyboardLayoutGuide.layoutFrame)")
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         onDisconnect()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        // Once the safe-area insets are known, grow the bar so its black fill reaches under the
+        // home indicator while the 36pt key strip stays at the top of the bar.
+        let inset = view.safeAreaInsets.bottom
+        extraKeysHeightConstraint?.constant = ExtraKeysAccessoryBar.barHeight + inset
     }
 
     // MARK: - Remote output
@@ -204,11 +200,11 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate, UIGe
     /// the right. The status lives here instead of a separate banner, so it never overlaps
     /// content and the bar is the only thing at the top of the screen.
     private func setupTopBar() {
-        topBar.backgroundColor = UIColor(white: 0.08, alpha: 1)
+        topBar.backgroundColor = .black
         topBar.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(topBar)
 
-        let symbolConfig = UIImage.SymbolConfiguration(pointSize: 18, weight: .semibold)
+        let symbolConfig = UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
         backButton.setImage(UIImage(systemName: "chevron.left", withConfiguration: symbolConfig), for: .normal)
         backButton.tintColor = .white
         backButton.translatesAutoresizingMaskIntoConstraints = false
@@ -217,16 +213,16 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate, UIGe
 
         titleLabel.text = config.displayName
         titleLabel.textColor = .white
-        titleLabel.font = .systemFont(ofSize: 16, weight: .medium)
+        titleLabel.font = .systemFont(ofSize: 15, weight: .medium)
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         topBar.addSubview(titleLabel)
 
-        statusDot.layer.cornerRadius = 5
+        statusDot.layer.cornerRadius = 4
         statusDot.translatesAutoresizingMaskIntoConstraints = false
         topBar.addSubview(statusDot)
 
-        statusText.font = .systemFont(ofSize: 13)
+        statusText.font = .systemFont(ofSize: 12)
         statusText.textColor = UIColor(white: 0.85, alpha: 1)
         statusText.translatesAutoresizingMaskIntoConstraints = false
         topBar.addSubview(statusText)
@@ -235,25 +231,25 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate, UIGe
             topBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             topBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             topBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            topBar.heightAnchor.constraint(equalToConstant: 44),
+            topBar.heightAnchor.constraint(equalToConstant: 36),
 
-            backButton.leadingAnchor.constraint(equalTo: topBar.leadingAnchor, constant: 4),
+            backButton.leadingAnchor.constraint(equalTo: topBar.leadingAnchor, constant: 2),
             backButton.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
-            backButton.widthAnchor.constraint(equalToConstant: 44),
+            backButton.widthAnchor.constraint(equalToConstant: 36),
 
             titleLabel.leadingAnchor.constraint(equalTo: backButton.trailingAnchor, constant: 0),
             titleLabel.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
 
-            statusText.trailingAnchor.constraint(equalTo: topBar.trailingAnchor, constant: -12),
+            statusText.trailingAnchor.constraint(equalTo: topBar.trailingAnchor, constant: -10),
             statusText.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
 
-            statusDot.trailingAnchor.constraint(equalTo: statusText.leadingAnchor, constant: -6),
+            statusDot.trailingAnchor.constraint(equalTo: statusText.leadingAnchor, constant: -5),
             statusDot.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
-            statusDot.widthAnchor.constraint(equalToConstant: 10),
-            statusDot.heightAnchor.constraint(equalToConstant: 10),
+            statusDot.widthAnchor.constraint(equalToConstant: 8),
+            statusDot.heightAnchor.constraint(equalToConstant: 8),
 
             // Title must not run into the status pill.
-            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: statusDot.leadingAnchor, constant: -8),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: statusDot.leadingAnchor, constant: -6),
         ])
 
         // Tap the status pill to force a reconnect (mirrors Android's tappable status banner).
@@ -275,10 +271,11 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate, UIGe
     private func applyStatus() {
         statusText.text = status.label
         statusDot.backgroundColor = status.dotColor
-        // Highlight the bar subtly while in a transient/failed state, dim back once connected.
+        // Only the status dot + text change colour; the bar stays black so the terminal reads as
+        // one continuous surface. A subtle dark-amber tint on transient/failed states only.
         topBar.backgroundColor = status.highlightsBar
-            ? UIColor(red: 0.50, green: 0.29, blue: 0.0, alpha: 1)
-            : UIColor(white: 0.08, alpha: 1)
+            ? UIColor(red: 0.30, green: 0.17, blue: 0.0, alpha: 1)
+            : .black
     }
 
     // MARK: - Layout: extra keys bar
@@ -291,14 +288,20 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate, UIGe
         extraKeysBar.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(extraKeysBar)
 
-        let bottom = extraKeysBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
+        // Bottom pins to view.bottom (NOT safeArea) so the bar's black background extends all the
+        // way to the screen edge, under the home indicator — no dead safe-area strip below the
+        // keys. The bar's scrollable content (buttons) sits in the top 36pt; the area below is
+        // black fill that the home indicator floats over. Height = 36 + safe-area-bottom.
+        let bottom = extraKeysBar.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         extraKeysBottomConstraint = bottom
+        let height = extraKeysBar.heightAnchor.constraint(equalToConstant: ExtraKeysAccessoryBar.barHeight)
+        extraKeysHeightConstraint = height
 
         NSLayoutConstraint.activate([
             extraKeysBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             extraKeysBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             bottom,
-            extraKeysBar.heightAnchor.constraint(equalToConstant: ExtraKeysAccessoryBar.barHeight),
+            height,
         ])
 
         extraKeysBar.configure(
@@ -463,8 +466,13 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate, UIGe
 
     private func adjustBottom(to height: CGFloat, duration: Double, curve: Int) {
         guard let constraint = extraKeysBottomConstraint else { return }
-        print("[AiDevMob] keyboard lift bottom by \(height)")
         constraint.constant = -height
+        // When the keyboard is up it covers the home indicator, so the bar no longer needs the
+        // bottom safe-area fill — collapse it to just the 36pt key strip, eliminating the empty
+        // black band that would otherwise sit between the keys and the keyboard's top.
+        extraKeysHeightConstraint?.constant = height > 0
+            ? ExtraKeysAccessoryBar.barHeight
+            : ExtraKeysAccessoryBar.barHeight + view.safeAreaInsets.bottom
         UIView.animate(withDuration: duration, delay: 0,
                        options: UIView.AnimationOptions(rawValue: UInt(curve << 16))) { [weak self] in
             self?.view.layoutIfNeeded()
@@ -518,7 +526,6 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate, UIGe
     // MARK: - TerminalViewDelegate
 
     func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
-        print("[AiDevMob] sizeChanged: \(newCols)x\(newRows)")
         onResize?(newCols, newRows)
     }
 
@@ -554,6 +561,42 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate, UIGe
     }
 }
 
+// MARK: - PasteAwareTerminalView
+
+/// A TerminalView subclass that cleans up pasted text before sending it to the PTY, matching
+/// Android Termux's `TerminalEmulator.paste`:
+///   1. Strip ESC (0x1B) and C1 control chars (0x80-0x9F) — these would trigger escape
+///      sequences and garble the screen when pasted from formatted sources.
+///   2. Convert LF (0x0A) and CRLF to CR (0x0D) — a raw PTY needs carriage returns to execute
+///      commands; bare LFs just move the cursor down, so multi-line paste piles onto one line
+///      and the output looks scrambled ("错位").
+///
+/// SwiftTerm's default `paste` forwards the clipboard verbatim, which is why pasting multi-line
+/// text produced garbled output. Normal keyboard input goes through `send(source:data:)`, not
+/// `paste`, so this only affects clipboard pastes.
+private final class PasteAwareTerminalView: TerminalView {
+    @objc override func paste(_ sender: Any?) {
+        guard let raw = UIPasteboard.general.string, !raw.isEmpty else { return }
+
+        // Remove ESC and C1 controls.
+        var cleaned = String(raw.unicodeScalars.filter {
+            $0 != "\u{001B}" && !($0.value >= 0x80 && $0.value <= 0x9F)
+        })
+        // LF / CRLF → CR.
+        cleaned = cleaned.replacingOccurrences(of: "\r\n", with: "\r")
+        cleaned = cleaned.replacingOccurrences(of: "\n", with: "\r")
+
+        // Bracketed paste if the program enabled it (matches SwiftTerm's original behaviour).
+        if getTerminal().bracketedPasteMode {
+            send(data: EscapeSequences.bracketedPasteStart[...])
+        }
+        send(txt: cleaned)
+        if getTerminal().bracketedPasteMode {
+            send(data: EscapeSequences.bracketedPasteEnd[...])
+        }
+    }
+}
+
 // MARK: - ExtraKeysAccessoryBar
 
 /// A fixed-height bar of extra keys (ESC/CTRL/arrows/TAB/…), mounted as the terminal's
@@ -569,12 +612,31 @@ private final class ExtraKeysAccessoryBar: UIView {
     private let scrollView = UIScrollView()
     private let stack = UIStackView()
 
-    /// Height of the bar.
-    static let barHeight: CGFloat = 44
+    /// On regular width (iPad) the key strip is centered and capped at this width so it reads as
+    /// a single toolbar floating above the keyboard, not a row stretched across the full screen.
+    /// On compact width (iPhone) the strip fills the bar and scrolls — there are more keys than
+    /// fit on a phone. Matches the iPad soft-keyboard width closely.
+    private static let regularMaxWidth: CGFloat = 760
+
+    /// Height of the bar — kept tight (36pt) to match the system keyboard's row height and
+    /// minimize dead space between the terminal and the keyboard.
+    static let barHeight: CGFloat = 36
+
+    /// Leading/trailing constraints of the scrollView, swapped in `applyWidthClass` so the strip
+    /// is full-width on phone and centered+bounded on iPad.
+    private var scrollLeading: NSLayoutConstraint!
+    private var scrollTrailing: NSLayoutConstraint!
+    private var scrollCenterX: NSLayoutConstraint!
+    /// iPad-only "centered and capped" constraints (less-than-or-equal edges + max width).
+    private var scrollLeadingLTE: NSLayoutConstraint!
+    private var scrollTrailingLTE: NSLayoutConstraint!
+    private var scrollMaxWidth: NSLayoutConstraint!
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        backgroundColor = ExtraKeyButton.normalBackground
+        // Match the terminal's black so the bar blends into it with no visible seam; the buttons
+        // (slightly lighter) provide the visual separation.
+        backgroundColor = .black
 
         scrollView.showsHorizontalScrollIndicator = false
         // delaysContentTouches MUST stay true (the default): it lets the scroll view detect a
@@ -593,14 +655,21 @@ private final class ExtraKeysAccessoryBar: UIView {
         stack.translatesAutoresizingMaskIntoConstraints = false
         scrollView.addSubview(stack)
 
-        // frameLayoutGuide = the visible strip (bar width); contentLayoutGuide = scrollable
-        // content. The stack is pinned only to the contentLayoutGuide so it grows with its
-        // buttons and scrolls when wider than the visible strip.
+        // scrollView occupies only the top `barHeight` points of the bar — the area below (the
+        // bottom safe-area inset / home indicator zone) stays as empty black fill, so the bar
+        // reaches the screen edge visually but the buttons sit above the home indicator.
+        scrollLeading = scrollView.leadingAnchor.constraint(equalTo: leadingAnchor)
+        scrollTrailing = scrollView.trailingAnchor.constraint(equalTo: trailingAnchor)
+        // Centered alternative, activated only on regular width (see applyWidthClass).
+        scrollCenterX = scrollView.centerXAnchor.constraint(equalTo: centerXAnchor)
+        scrollLeadingLTE = scrollView.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor)
+        scrollTrailingLTE = scrollView.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor)
+        scrollMaxWidth = scrollView.widthAnchor.constraint(lessThanOrEqualToConstant: Self.regularMaxWidth)
+        scrollCenterX.priority = .required
+
         NSLayoutConstraint.activate([
-            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
             scrollView.topAnchor.constraint(equalTo: topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            scrollView.heightAnchor.constraint(equalToConstant: Self.barHeight),
 
             stack.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
             stack.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
@@ -608,6 +677,8 @@ private final class ExtraKeysAccessoryBar: UIView {
             stack.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor, constant: -6),
             stack.heightAnchor.constraint(equalTo: scrollView.frameLayoutGuide.heightAnchor),
         ])
+
+        applyWidthClass()
     }
 
     @available(*, unavailable)
@@ -618,24 +689,27 @@ private final class ExtraKeysAccessoryBar: UIView {
         CGSize(width: UIView.noIntrinsicMetric, height: Self.barHeight)
     }
 
-    /// Diagnostic dump of scroll state.
-    func logScrollState() {
-        print("[AiDevMob] scroll frame=\(scrollView.frame) contentSize=\(scrollView.contentSize) isScrollEnabled=\(scrollView.isScrollEnabled)")
-        print("[AiDevMob] stack frame=\(stack.frame) arrangedCount=\(stack.arrangedSubviews.count)")
-        for (i, v) in stack.arrangedSubviews.enumerated() {
-            if let b = v as? UIButton { print("[AiDevMob]   key[\(i)]='\(b.currentTitle ?? "?")' frame=\(b.frame)") }
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        if previousTraitCollection?.horizontalSizeClass != traitCollection.horizontalSizeClass {
+            applyWidthClass()
         }
-        // Check gesture recognizers that might steal horizontal pans.
-        if let barSuperview = superview {
-            let stealers = barSuperview.gestureRecognizers ?? []
-            print("[AiDevMob] parent gestureRecognizers: \(stealers.count)")
-            for g in stealers {
-                print("[AiDevMob]   \(type(of: g)) del=+\(g.delaysTouchesBegan) canc=\(g.cancelsTouchesInView)")
-            }
-        }
-        // The TerminalView is a sibling UIScrollView; its pan gesture may win over ours.
-        print("[AiDevMob] scroll.gestureRecognizers: \(scrollView.gestureRecognizers?.count ?? 0)")
-        print("[AiDevMob] scroll.isScrollEnabled=\(scrollView.isScrollEnabled) pan allowed=\(scrollView.panGestureRecognizer.isEnabled)")
+    }
+
+    /// Swaps the scrollView's horizontal layout for the current size class. Phone (compact): the
+    /// strip spans the bar and scrolls when keys overflow. iPad (regular): the strip is centered
+    /// and capped at `regularMaxWidth` so it floats as a toolbar above the keyboard.
+    private func applyWidthClass() {
+        let regular = traitCollection.horizontalSizeClass == .regular
+        // Phone (compact): strip spans the full bar.
+        scrollLeading.isActive = !regular
+        scrollTrailing.isActive = !regular
+        // iPad (regular): strip centered and capped at regularMaxWidth, with >=/<= edges so it
+        // never overflows the bar even on a narrow Slide Over window.
+        scrollCenterX.isActive = regular
+        scrollLeadingLTE.isActive = regular
+        scrollTrailingLTE.isActive = regular
+        scrollMaxWidth.isActive = regular
     }
 
     /// Populates the key row. The closures forward to the controller:
@@ -684,9 +758,11 @@ private final class ExtraKeysAccessoryBar: UIView {
         let button = ExtraKeyButton(behavior: behavior)
         button.setTitle(label, for: .normal)
         button.setTitleColor(.white, for: .normal)
-        button.titleLabel?.font = .systemFont(ofSize: 14, weight: .medium)
-        button.contentEdgeInsets = UIEdgeInsets(top: 6, left: 14, bottom: 6, right: 14)
-        button.layer.cornerRadius = 6
+        button.titleLabel?.font = .systemFont(ofSize: 13, weight: .medium)
+        // Tight padding (4pt vertical) so the bar stays slim and matches the keyboard's density;
+        // the bar height is only 36pt so there's no room for generous insets.
+        button.contentEdgeInsets = UIEdgeInsets(top: 4, left: 12, bottom: 4, right: 12)
+        button.layer.cornerRadius = 4
         button.layer.masksToBounds = true
         button.backgroundColor = ExtraKeyButton.normalBackground
         switch behavior {

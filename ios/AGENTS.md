@@ -48,6 +48,39 @@ on a free Apple account works (7-day cert); the app is never distributed via App
 - Pinned to **frp v0.70.1**. frp's pre-v0.61 versions had a different package layout
   (`pkg/client` instead of top-level `client/`); do not "simplify" the imports for an old frp.
 
+## iPad / size-class layout (universal, one code path forked at the root)
+
+The app is Universal (`TARGETED_DEVICE_FAMILY = "1,2"`, the xcodegen default). The root SwiftUI
+view (`RootView`) forks on `@Environment(\.horizontalSizeClass)` so iPhone and iPad share one
+`AppCoordinator` but get different presentation containers:
+
+- **compact (iPhone)** — `CompactShell`: the original 4-tab `MainTabView`, terminal shown via
+  `.fullScreenCover(item: $coordinator.activeTerminal)`. Visually identical to the previous
+  UIKit push (full-screen terminal with its own back chevron).
+- **regular (iPad)** — `IPadShell`: a two-column `NavigationSplitView`. The sidebar is a
+  `NavigationStack` whose root is a category menu (连接/凭证/隧道/服务器); selecting one drills
+  into the matching list view. The **detail** column shows the live terminal (or a placeholder),
+  and opening a connection fills the detail **without dismissing the sidebar** — so you can
+  switch connections or edit tunnels while a terminal stays live.
+
+Gotchas:
+- The four list views (`ConnectionListView`, `CredentialListView`, `TunnelListView`,
+  `ServerListView`) take `embeddedInSplit: Bool = false`. When true they skip their own outer
+  `NavigationStack` + `navigationTitle` because the sidebar already provides one. iPhone leaves
+  it at the default. Don't remove this flag or the iPad sidebar gets a nested NavigationStack
+  (double nav bars, broken sheets).
+- `TerminalViewController` is a self-contained UIKit VC bridged into SwiftUI via
+  `TerminalHostingView` (`UIViewControllerRepresentable`). The **coordinator owns the VC for the
+  whole session**; the bridge's `makeUIViewController` returns the passed-in instance and
+  `updateUIViewController` is a no-op. Never recreate the VC on a SwiftUI re-render — that
+  tears down the live SSH channel.
+- `ExtraKeysAccessoryBar.applyWidthClass()` swaps its horizontal constraints by size class:
+  full-width + scrollable on compact, centered + capped at 760pt on regular. All six horizontal
+  constraints are stored properties created once in init and toggled via `isActive` (never
+  re-created), so size-class transitions don't accumulate constraints.
+- Android has **no** tablet adaptation to mirror (it hardcodes an 80×24 terminal and stretches);
+  the iPad UX is iOS-only.
+
 ## The two iOS-only constraints (both have mitigations)
 
 1. **No foreground service.** iOS suspends the app ~30s after backgrounding, dropping the
