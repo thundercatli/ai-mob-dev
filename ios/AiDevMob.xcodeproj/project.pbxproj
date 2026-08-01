@@ -13,6 +13,7 @@
 		6975DB391FFAF20A0F972F44 /* TunnelRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = B68C2170BE25154727EA0B52 /* TunnelRuntime.swift */; };
 		6AD0131A50EB7ADBD7EBADDF /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6CB37BF73108BD8EDDD68B8 /* Models.swift */; };
 		7106DEA41B1037378A895603 /* SshTerminalConnector.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0E3150D3BD13E0786DE17C8 /* SshTerminalConnector.swift */; };
+		763E1D1E8B6D2913A29193FB /* TmuxSessionProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 705D116AA14238990FACAE0E /* TmuxSessionProbe.swift */; };
 		8D8000DD5D885D2D6CE17494 /* Frpclib.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 3EE88F2F1A6AED2678A0028F /* Frpclib.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		9BC2F2B1E0F605FF8E0EE603 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2125420ABE07E144A236D7B7 /* AppDelegate.swift */; };
 		C45942EA88858EC644B7C243 /* Stores.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2333F90E491FB82C4347C682 /* Stores.swift */; };
@@ -41,7 +42,8 @@
 		3EE88F2F1A6AED2678A0028F /* Frpclib.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Frpclib.xcframework; path = Frameworks/Frpclib.xcframework; sourceTree = "<group>"; };
 		486DBAD8A3C66F998D857578 /* ManagementViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagementViews.swift; sourceTree = "<group>"; };
 		6A0DADD2F55F5A890061D986 /* AppRoot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRoot.swift; sourceTree = "<group>"; };
-		7F398F5010724F6E877105EA /* AiDevMob.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AiDevMob.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		705D116AA14238990FACAE0E /* TmuxSessionProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxSessionProbe.swift; sourceTree = "<group>"; };
+		7F398F5010724F6E877105EA /* AiDevMob.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AiDevMob.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B68C2170BE25154727EA0B52 /* TunnelRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelRuntime.swift; sourceTree = "<group>"; };
 		BC9D74CA98935B9D5EC2FFA7 /* TerminalViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalViewController.swift; sourceTree = "<group>"; };
 		C0E3150D3BD13E0786DE17C8 /* SshTerminalConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SshTerminalConnector.swift; sourceTree = "<group>"; };
@@ -83,6 +85,7 @@
 			isa = PBXGroup;
 			children = (
 				C0E3150D3BD13E0786DE17C8 /* SshTerminalConnector.swift */,
+				705D116AA14238990FACAE0E /* TmuxSessionProbe.swift */,
 			);
 			path = SSH;
 			sourceTree = "<group>";
@@ -176,7 +179,6 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					5FD193B8AD187EB39A36FC7C = {
-						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -216,6 +218,7 @@
 				7106DEA41B1037378A895603 /* SshTerminalConnector.swift in Sources */,
 				C45942EA88858EC644B7C243 /* Stores.swift in Sources */,
 				04C9947C4D66EC2E9873FCF2 /* TerminalViewController.swift in Sources */,
+				763E1D1E8B6D2913A29193FB /* TmuxSessionProbe.swift in Sources */,
 				6975DB391FFAF20A0F972F44 /* TunnelRuntime.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -294,6 +297,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = H6HTR2J3WL;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -321,6 +325,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = H6HTR2J3WL;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",

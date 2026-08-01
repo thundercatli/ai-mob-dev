@@ -83,9 +83,13 @@ func (rt *Runtime) StartTunnel(id, serverAddr string, serverPort int, token, ser
 	common := &v1.ClientCommonConfig{
 		ServerAddr:    serverAddr,
 		ServerPort:    serverPort,
-		User:          "aidevmob",
 		LoginFailExit: ptr(false), // keep retrying login on network blips, like Android's restart loop
 	}
+	// NOTE: do NOT set User here. STCP visitors resolve their target proxy on frps as
+	// "{user}.{serverName}" when user is non-empty (naming.BuildTargetServerProxyName), so a
+	// non-empty User would make the visitor look for "aidevmob.<serverName>" — which won't match
+	// a server-side stcp proxy named plain "<serverName>". Android's TOML sets no user and relies
+	// on this exact (empty-user) behaviour; we mirror it.
 	if token != "" {
 		common.Auth.Method = v1.AuthMethodToken
 		common.Auth.Token = token

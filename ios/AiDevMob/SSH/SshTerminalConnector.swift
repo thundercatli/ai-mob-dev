@@ -154,6 +154,17 @@ final class SshTerminalConnector {
     private var hasStarted = false
     private var hasNotifiedDisconnect = false
 
+    /// The most recent terminal size the UI asked for. Used (a) to size the initial PTY request
+    /// and (b) to sync the PTY once the channel opens (the view may have resized mid-connect).
+    private var requestedCols: Int?
+    private var requestedRows: Int?
+    /// Last cols/rows actually sent to the PTY, to skip no-op resizes.
+    private var pendingCols: Int?
+    private var pendingRows: Int?
+    /// Debounce task: coalesces a burst of resizes (keyboard animation fires sizeChanged every
+    /// frame) into one PTY resize after things settle, so tmux isn't flooded.
+    private var resizeDebounceTask: Task<Void, Never>?
+
     init(config: ConnectionConfig) {
         self.config = config
         self.hostKeyValidator = TofuHostKeyValidator(host: config.host, port: config.port)
@@ -245,10 +256,20 @@ final class SshTerminalConnector {
             guard let self else { return }
             self.lock.lock()
             self.outbound = outbound
+            self.pendingCols = self.requestedCols
+            self.pendingRows = self.requestedRows
             self.lock.unlock()
 
             var sessionError: Error?
             do {
+                // Sync the PTY to the terminal's CURRENT size right after the channel opens.
+                // The view may have already resized (e.g. keyboard appeared) between connect and
+                // this point; without this the shell starts at the connect-time size and the
+                // first visible content is clipped until the next sizeChanged fires.
+                if let cols = self.requestedCols, let rows = self.requestedRows {
+                    try? await outbound.changeSize(cols: cols, rows: rows, pixelWidth: 0, pixelHeight: 0)
+                }
+
                 // Mirrors Android's sendStartupCommand: set a UTF-8 locale (fallback for sshd
                 // refusing to forward LANG) and optionally attach/create the tmux session.
                 try await outbound.write(ByteBuffer(string: startupCommand))
@@ -278,12 +299,72 @@ final class SshTerminalConnector {
         try await writer.write(ByteBuffer(bytes: bytes))
     }
 
-    /// Resizes the remote PTY; the terminal view calls this as its layout changes.
-    /// - Throws: `SshConnectorError.notConnected` if no session is live.
+    /// Resizes the remote PTY; the terminal view calls this as its layout changes. Stores the
+    /// requested size even before the channel is open (so it can be applied on connect), and
+    /// debounces a burst of calls (the keyboard animation fires sizeChanged every frame) into a
+    /// single PTY resize ~150ms after the last change — so tmux isn't flooded with resizes mid-flux.
     func resize(cols: Int, rows: Int) async throws {
-        let writer = lockedOutbound()
-        guard let writer else { throw SshConnectorError.notConnected }
-        try await writer.changeSize(cols: cols, rows: rows, pixelWidth: 0, pixelHeight: 0)
+        lock.lock()
+        requestedCols = cols
+        requestedRows = rows
+        // Skip if it's the same as what we last sent.
+        if pendingCols == cols && pendingRows == rows {
+            lock.unlock()
+            return
+        }
+        let writer = outbound
+        lock.unlock()
+
+        guard let writer else {
+            // Channel not open yet; the size is recorded and applied in the withPTY closure.
+            return
+        }
+
+        // Debounce: cancel any pending resize and schedule a new one.
+        resizeDebounceTask?.cancel()
+        resizeDebounceTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 150_000_000) // 150ms
+            guard !Task.isCancelled else { return }
+            guard let self else { return }
+            self.lock.lock()
+            let c = self.requestedCols ?? cols
+            let r = self.requestedRows ?? rows
+            self.lock.unlock()
+            try? await writer.changeSize(cols: c, rows: r, pixelWidth: 0, pixelHeight: 0)
+            self.lock.lock()
+            self.pendingCols = c
+            self.pendingRows = r
+            self.lock.unlock()
+        }
+    }
+
+    /// Runs a single command on the host described by `config` over a fresh SSH connection and
+    /// returns its combined stdout, then closes the connection. Used by `TmuxSessionProbe` (the
+    /// iOS port of Android's), which needs to `tmux list-sessions` without disturbing the live
+    /// terminal session — so this never touches the PTY channel and opens its own client.
+    ///
+    /// - Throws: any connection/auth/exec failure.
+    static func exec(config: ConnectionConfig, command: String) async throws -> String {
+        let validator = TofuHostKeyValidator(host: config.host, port: config.port)
+        let client = try await SSHClient.connect(
+            host: config.host,
+            port: config.port,
+            authenticationMethod: try Self.makeAuthenticationMethod(from: config),
+            hostKeyValidator: SSHHostKeyValidator.custom(validator),
+            reconnect: .never
+        )
+        defer { Task { try? await client.close() } }
+
+        var collected = [UInt8]()
+        try await client.withExec(command) { inbound, _ in
+            for try await output in inbound {
+                switch output {
+                case .stdout(let buffer), .stderr(let buffer):
+                    collected.append(contentsOf: buffer.readableBytesView)
+                }
+            }
+        }
+        return String(bytes: collected, encoding: .utf8) ?? ""
     }
 
     /// Closes the SSH connection and ends the session; `onDisconnect` fires once the remote

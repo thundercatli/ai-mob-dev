@@ -12,7 +12,7 @@ private let keyRepeatInterval: TimeInterval = 0.06
 /// architecture as Android's vendored Termux) with a horizontally scrolling extra-keys
 /// row that mirrors Android's `buildExtraKeysRow`. The SSH layer wires itself up through
 /// the public closures; this controller is UI-only and never touches sockets.
-final class TerminalViewController: UIViewController, TerminalViewDelegate {
+final class TerminalViewController: UIViewController, TerminalViewDelegate, UIGestureRecognizerDelegate {
 
     // MARK: - Wired up by the SSH layer
 
@@ -27,7 +27,7 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate {
     /// window-change (Android: `SshTerminalConnector`'s window-change hook).
     var onResize: ((_ cols: Int, _ rows: Int) -> Void)?
 
-    /// Called when the user taps the status banner to force a reconnect.
+    /// Called when the user taps the status to force a reconnect.
     var onReconnect: () -> Void = {}
 
     /// Called when this screen is going away so the caller can tear down the SSH channel.
@@ -35,23 +35,79 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate {
     /// like Android's `disconnectInBackground()`.
     var onDisconnect: () -> Void = {}
 
-    // MARK: - Status strings (mirror Android's values-zh strings.xml)
+    /// Called when the user taps the back button so the coordinator can pop this screen.
+    var onClose: () -> Void = {}
 
-    static let statusConnecting = "连接中…"
-    static let statusReconnecting = "重连中…"
-    static let statusTunnelStarting = "隧道启动中…"
-    static let statusDisconnected = "已断开"
+    // MARK: - Connection status (drives the top-bar status pill)
+
+    enum Status: Equatable {
+        case connecting
+        case tunnelStarting
+        case connected
+        case reconnecting
+        case disconnected
+        case failed(String)
+
+        var label: String {
+            switch self {
+            case .connecting:     return "连接中"
+            case .tunnelStarting: return "隧道启动中"
+            case .connected:      return "已连接"
+            case .reconnecting:   return "重连中"
+            case .disconnected:   return "已断开"
+            case .failed(let m):  return m
+            }
+        }
+
+        /// Color of the status dot.
+        var dotColor: UIColor {
+            switch self {
+            case .connected:      return UIColor(red: 0.30, green: 0.85, blue: 0.40, alpha: 1)
+            case .connecting,
+                 .tunnelStarting,
+                 .reconnecting:    return UIColor(red: 0.95, green: 0.69, blue: 0.20, alpha: 1)
+            case .disconnected,
+                 .failed:          return UIColor(red: 0.92, green: 0.38, blue: 0.38, alpha: 1)
+            }
+        }
+
+        /// Whether the whole top bar should pulse to draw attention (only transient/failed states).
+        var highlightsBar: Bool {
+            switch self {
+            case .connected: return false
+            default:         return true
+            }
+        }
+    }
 
     // MARK: - Views
 
+    private let topBar = UIView()
+    private let backButton = UIButton(type: .system)
+    private let titleLabel = UILabel()
+    private let statusDot = UIView()
+    private let statusText = UILabel()
     private let terminalView = TerminalView(frame: .zero)
-    private let extraKeysScrollView = UIScrollView()
-    private let extraKeysStack = UIStackView()
-    private let statusLabel = UILabel()
+    /// The extra-keys row, pinned below the terminal (so it reads as part of the terminal). It
+    /// scrolls horizontally — there are more keys than fit on a phone. Both terminalView and this
+    /// bar sit above `keyboardLayoutGuide.topAnchor`, so the whole cluster lifts above the
+    /// keyboard and the terminal resizes to the visible area. No inputAccessoryView: those are
+    /// unreliable for scrollable content (UIKit owns their frame), and this approach gives the
+    /// same "keys stuck to the terminal" feel with a working scroll.
+    private let extraKeysBar = ExtraKeysAccessoryBar()
+
+    /// extraKeysBar's bottom constraint; its constant is lifted by the keyboard height so the
+    /// bar (and the terminal above it) rise above the keyboard.
+    private var extraKeysBottomConstraint: NSLayoutConstraint?
 
     /// Ctrl modifier toggled from the extra-keys row. Applied to soft-keyboard input in
     /// `send(source:data:)`, mirroring Android's `AppTerminalViewClient.ctrlDown`.
     private var ctrlDown = false
+
+    /// Current status; updating it refreshes the top-bar pill. Main-thread only.
+    private var status: Status = .connecting {
+        didSet { guard oldValue != status else { return }; applyStatus() }
+    }
 
     // MARK: - Init
 
@@ -68,17 +124,39 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
-        title = config.displayName
 
+        setupTopBar()
+        setupExtraKeysBar()
         setupTerminalView()
-        setupExtraKeysRow()
-        setupStatusLabel()
+
+        // Kill SwiftTerm's built-in TerminalAccessory (the default inputAccessoryView). We
+        // render our own key row as a normal subview below; leaving the default would show two.
+        terminalView.inputAccessoryView = nil
+
+        registerKeyboardNotifications()
+
+        status = .connecting
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         // Like Android's `requestFocus()`: opens the soft keyboard right away.
         terminalView.becomeFirstResponder()
+        // Diagnostic: dump layout state now, and again after the keyboard appears, to see if
+        // the terminal frame + PTY size actually track the keyboard.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.dumpLayout("before-kb")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            self?.dumpLayout("after-kb")
+        }
+    }
+
+    private func dumpLayout(_ tag: String) {
+        let term = terminalView.getTerminal()
+        print("[AiDevMob] layout[\(tag)] terminalFrame=\(terminalView.frame) cols=\(term.cols) rows=\(term.rows)")
+        print("[AiDevMob] layout[\(tag)] extraKeysBar.frame=\(extraKeysBar.frame)")
+        print("[AiDevMob] layout[\(tag)] keyboardLayoutGuide.top=\(view.keyboardLayoutGuide.layoutFrame)")
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -94,161 +172,307 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate {
     func feed(_ bytes: [UInt8]) {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            self.terminalView.getTerminal().feed(byteArray: bytes)
+            // Must call TerminalView.feed (not Terminal.feed): the view-level feed wraps the
+            // data in feedPrepare()/feedFinish(), which resume the CADisplayLink render loop
+            // and queue a redraw. Calling the underlying Terminal.feed directly updates only
+            // the in-memory buffer — the display link stays suspended (its initial state) and
+            // nothing ever renders.
+            self.terminalView.feed(byteArray: ArraySlice(bytes))
+            // First bytes mean the shell is live — flip to connected (idempotent).
+            if self.status != .connected { self.status = .connected }
         }
     }
 
-    // MARK: - Status banner
+    // MARK: - Status (public, called by the coordinator)
 
-    /// Shows the connection-status banner; tapping it reconnects (Android's `textConnectionStatus`).
-    func showStatus(_ text: String) {
-        statusLabel.text = text
-        statusLabel.isHidden = false
+    func setStatus(_ status: Status) {
+        DispatchQueue.main.async { [weak self] in self?.status = status }
     }
 
-    func hideStatus() {
-        statusLabel.isHidden = true
+    /// The terminal's current column/row count, used for the initial PTY size so the shell/tmux
+    /// starts at the right dimensions instead of a hardcoded default.
+    func currentTerminalSize() -> (cols: Int, rows: Int) {
+        let t = terminalView.getTerminal()
+        let cols = max(t.cols, 1)
+        let rows = max(t.rows, 1)
+        return (cols, rows)
     }
 
-    // MARK: - Layout
+    // MARK: - Layout: top bar
+
+    /// Compact top bar: back chevron, connection title, and a status pill (dot + text) on
+    /// the right. The status lives here instead of a separate banner, so it never overlaps
+    /// content and the bar is the only thing at the top of the screen.
+    private func setupTopBar() {
+        topBar.backgroundColor = UIColor(white: 0.08, alpha: 1)
+        topBar.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(topBar)
+
+        let symbolConfig = UIImage.SymbolConfiguration(pointSize: 18, weight: .semibold)
+        backButton.setImage(UIImage(systemName: "chevron.left", withConfiguration: symbolConfig), for: .normal)
+        backButton.tintColor = .white
+        backButton.translatesAutoresizingMaskIntoConstraints = false
+        backButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
+        topBar.addSubview(backButton)
+
+        titleLabel.text = config.displayName
+        titleLabel.textColor = .white
+        titleLabel.font = .systemFont(ofSize: 16, weight: .medium)
+        titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        topBar.addSubview(titleLabel)
+
+        statusDot.layer.cornerRadius = 5
+        statusDot.translatesAutoresizingMaskIntoConstraints = false
+        topBar.addSubview(statusDot)
+
+        statusText.font = .systemFont(ofSize: 13)
+        statusText.textColor = UIColor(white: 0.85, alpha: 1)
+        statusText.translatesAutoresizingMaskIntoConstraints = false
+        topBar.addSubview(statusText)
+
+        NSLayoutConstraint.activate([
+            topBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            topBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            topBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            topBar.heightAnchor.constraint(equalToConstant: 44),
+
+            backButton.leadingAnchor.constraint(equalTo: topBar.leadingAnchor, constant: 4),
+            backButton.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
+            backButton.widthAnchor.constraint(equalToConstant: 44),
+
+            titleLabel.leadingAnchor.constraint(equalTo: backButton.trailingAnchor, constant: 0),
+            titleLabel.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
+
+            statusText.trailingAnchor.constraint(equalTo: topBar.trailingAnchor, constant: -12),
+            statusText.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
+
+            statusDot.trailingAnchor.constraint(equalTo: statusText.leadingAnchor, constant: -6),
+            statusDot.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
+            statusDot.widthAnchor.constraint(equalToConstant: 10),
+            statusDot.heightAnchor.constraint(equalToConstant: 10),
+
+            // Title must not run into the status pill.
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: statusDot.leadingAnchor, constant: -8),
+        ])
+
+        // Tap the status pill to force a reconnect (mirrors Android's tappable status banner).
+        let tap = UITapGestureRecognizer(target: self, action: #selector(statusTapped))
+        statusDot.addGestureRecognizer(tap)
+        statusText.addGestureRecognizer(tap)
+    }
+
+    @objc private func backTapped() {
+        // Dismiss the keyboard first so the pop animation isn't janky.
+        terminalView.resignFirstResponder()
+        onClose()
+    }
+
+    @objc private func statusTapped() {
+        onReconnect()
+    }
+
+    private func applyStatus() {
+        statusText.text = status.label
+        statusDot.backgroundColor = status.dotColor
+        // Highlight the bar subtly while in a transient/failed state, dim back once connected.
+        topBar.backgroundColor = status.highlightsBar
+            ? UIColor(red: 0.50, green: 0.29, blue: 0.0, alpha: 1)
+            : UIColor(white: 0.08, alpha: 1)
+    }
+
+    // MARK: - Layout: extra keys bar
+
+    /// Pins the extra-keys bar below the terminal. The bar's bottom constraint constant is
+    /// adjusted by the keyboard handler (manual, via keyboardWillChangeFrame) so the whole
+    /// cluster lifts above the keyboard. keyboardLayoutGuide was tried but did not move the bar
+    /// on this target; the manual path is reliable.
+    private func setupExtraKeysBar() {
+        extraKeysBar.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(extraKeysBar)
+
+        let bottom = extraKeysBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
+        extraKeysBottomConstraint = bottom
+
+        NSLayoutConstraint.activate([
+            extraKeysBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            extraKeysBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            bottom,
+            extraKeysBar.heightAnchor.constraint(equalToConstant: ExtraKeysAccessoryBar.barHeight),
+        ])
+
+        extraKeysBar.configure(
+            config: config,
+            send: { [weak self] bytes in self?.sendBytes(bytes) },
+            setCtrl: { [weak self] on in self?.ctrlDown = on },
+            cursor: { [weak self] finalByte in self?.sendCursorKey(finalByte: finalByte) },
+            tmux: { [weak self] key in
+                guard let self else { return }
+                let control = UInt8(self.tmuxPrefix.asciiValue! - Character("a").asciiValue! + 1)
+                self.sendBytes([control])
+                self.sendBytes(Array(key.utf8))
+            },
+            hideKeyboard: { [weak self] in
+                // Dismiss the soft keyboard so the terminal fills more of the screen; tapping the
+                // terminal area brings it back (it's first-responder-eligible).
+                self?.terminalView.resignFirstResponder()
+            }
+        )
+    }
+
+    // MARK: - Layout: terminal
 
     private func setupTerminalView() {
         terminalView.terminalDelegate = self
         terminalView.backgroundColor = .black
+        // Keep mouse reporting ON so TUI programs (opencode/vim/tmux) receive wheel events and
+        // can scroll their own content / enter copy mode. But SwiftTerm's built-in pan handler
+        // forwards vertical pans as mouse-drag (button-motion) events, which TUIs interpret as
+        // text selection ("copied to clipboard" in opencode). We add our own pan gesture below
+        // that intercepts vertical scrolls and sends proper wheel events instead — mirroring
+        // Android Termux's `doScroll`, which only ever sends MOUSE_WHEELUP/WHEELDOWN.
         terminalView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(terminalView)
 
+        installWheelScrollGesture()
+
         NSLayoutConstraint.activate([
-            terminalView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            terminalView.topAnchor.constraint(equalTo: topBar.bottomAnchor),
             terminalView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             terminalView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            terminalView.bottomAnchor.constraint(equalTo: extraKeysScrollView.topAnchor),
+            // Terminal sits directly above the extra-keys bar.
+            terminalView.bottomAnchor.constraint(equalTo: extraKeysBar.topAnchor),
         ])
     }
 
-    /// A horizontally scrolling row of keys below the terminal, ordered exactly like
-    /// Android's `buildExtraKeysRow`.
-    private func setupExtraKeysRow() {
-        extraKeysScrollView.showsHorizontalScrollIndicator = false
-        extraKeysScrollView.delaysContentTouches = false
-        extraKeysScrollView.backgroundColor = ExtraKeyButton.normalBackground
-        extraKeysScrollView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(extraKeysScrollView)
+    // MARK: - Wheel-scroll gesture
 
-        extraKeysStack.axis = .horizontal
-        extraKeysStack.alignment = .center
-        extraKeysStack.spacing = 4
-        extraKeysStack.translatesAutoresizingMaskIntoConstraints = false
-        extraKeysScrollView.addSubview(extraKeysStack)
+    /// Accumulated vertical pan distance not yet turned into a row, like Termux's mScrollRemainder.
+    private var wheelScrollRemainder: CGFloat = 0
 
-        NSLayoutConstraint.activate([
-            extraKeysScrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            extraKeysScrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            extraKeysScrollView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
-            extraKeysScrollView.heightAnchor.constraint(equalToConstant: 46),
-
-            extraKeysStack.topAnchor.constraint(equalTo: extraKeysScrollView.contentLayoutGuide.topAnchor),
-            extraKeysStack.leadingAnchor.constraint(equalTo: extraKeysScrollView.contentLayoutGuide.leadingAnchor, constant: 4),
-            extraKeysStack.trailingAnchor.constraint(equalTo: extraKeysScrollView.contentLayoutGuide.trailingAnchor, constant: -4),
-            extraKeysStack.bottomAnchor.constraint(equalTo: extraKeysScrollView.contentLayoutGuide.bottomAnchor),
-            extraKeysStack.heightAnchor.constraint(equalTo: extraKeysScrollView.frameLayoutGuide.heightAnchor),
-        ])
-
-        buildExtraKeysRow()
+    /// Installs a vertical-pan gesture that, when the foreground TUI has enabled mouse tracking,
+    /// sends proper mouse wheel events (button 64=up, 65=down) instead of letting SwiftTerm
+    /// forward the pan as a button-drag (which TUIs read as text selection). This mirrors
+    /// Android Termux's `doScroll`, the reason scrolling works on Android inside vim/tmux/less.
+    /// When mouse tracking is off (plain shell) the gesture does nothing and SwiftTerm scrolls
+    /// its own scrollback.
+    private func installWheelScrollGesture() {
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(wheelScroll(_:)))
+        pan.delegate = self
+        // A tiny delay so taps still feel instant; this mainly needs to beat the scroll view's
+        // own pan when we want to consume the gesture.
+        pan.maximumNumberOfTouches = 1
+        terminalView.addGestureRecognizer(pan)
     }
 
-    private func setupStatusLabel() {
-        statusLabel.translatesAutoresizingMaskIntoConstraints = false
-        statusLabel.textColor = .white
-        statusLabel.font = .systemFont(ofSize: 13)
-        statusLabel.textAlignment = .center
-        statusLabel.backgroundColor = UIColor(red: 0xB3 / 255, green: 0x6B / 255, blue: 0, alpha: 1)
-        statusLabel.isHidden = true
-        view.addSubview(statusLabel)
+    @objc private func wheelScroll(_ gr: UIPanGestureRecognizer) {
+        let term = terminalView.getTerminal()
+        // Only hijack the gesture when the TUI is tracking the mouse; otherwise let SwiftTerm
+        // handle the scroll itself (plain-shell scrollback).
+        guard term.mouseMode != .off, terminalView.allowMouseReporting else { return }
 
-        NSLayoutConstraint.activate([
-            statusLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            statusLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            statusLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            statusLabel.heightAnchor.constraint(equalToConstant: 32),
-        ])
+        let dy = gr.translation(in: terminalView).y
+        gr.setTranslation(.zero, in: terminalView)
 
-        statusLabel.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(statusLabelTapped)))
-    }
+        // Cell height from the view frame and terminal rows.
+        let cellHeight = max(terminalView.bounds.height / CGFloat(max(term.rows, 1)), 1)
+        wheelScrollRemainder += dy
+        let rows = Int(wheelScrollRemainder / cellHeight)
+        wheelScrollRemainder -= CGFloat(rows) * cellHeight
+        guard rows != 0 else { return }
 
-    @objc private func statusLabelTapped() {
-        onReconnect()
-    }
-
-    // MARK: - Extra keys row
-
-    private func buildExtraKeysRow() {
-        // Plain bytes: ESC, then the cursor keys early on because the row scrolls
-        // horizontally and these are the ones used constantly (shell history, TUI nav).
-        addKey("ESC") { $0.sendBytes([0x1B]) }
-        addToggleKey("CTRL") { $0.ctrlDown = $1 }
-        addRepeatableKey("←") { $0.arrowKey(.left) }
-        addRepeatableKey("↓") { $0.arrowKey(.down) }
-        addRepeatableKey("↑") { $0.arrowKey(.up) }
-        addRepeatableKey("→") { $0.arrowKey(.right) }
-        // Only for sessions that actually have windows: in a plain shell these would type
-        // the prefix as a stray control character.
-        if config.tmuxSession.isNotBlank {
-            addKey("W+") { $0.sendTmuxKey("c") }
-            addKey("◀W") { $0.sendTmuxKey("p") }
-            addKey("W▶") { $0.sendTmuxKey("n") }
+        // SwiftTerm encodeButton: button 4 -> 64 (wheel up), 5 -> 65 (wheel down).
+        // Negative dy (finger up = scroll toward history) → wheel up.
+        let button = rows < 0 ? 4 : 5
+        let flags = term.encodeButton(button: button, release: false, shift: false, meta: false, control: false)
+        // Approximate grid cell at the touch point; the column matters less than the row for
+        // scrolling, and most TUIs only act on the wheel direction. Clamp to terminal bounds.
+        let loc = gr.location(in: terminalView)
+        let col = min(max(Int(loc.x / (terminalView.bounds.width / CGFloat(max(term.cols, 1)))), 0), term.cols - 1)
+        let row = min(max(Int(loc.y / cellHeight), 0), term.rows - 1)
+        for _ in 0..<abs(rows) {
+            term.sendEvent(buttonFlags: flags, x: col, y: row)
         }
-        addKey("TAB") { $0.sendBytes([0x09]) }
-        // Back-tab (terminfo kcbt), what shift+tab produces on a real keyboard.
-        addKey("S-TAB") { $0.sendBytes([0x1B, 0x5B, 0x5A]) }
-        addKey("^C") { $0.sendBytes([0x03]) }
-        addKey("^D") { $0.sendBytes([0x04]) }
-        addKey("Home") { $0.cursorKey(.home) }
-        addKey("End") { $0.cursorKey(.end) }
-        addRepeatableKey("PgUp") { $0.sendBytes([0x1B, 0x5B, 0x35, 0x7E]) }
-        addRepeatableKey("PgDn") { $0.sendBytes([0x1B, 0x5B, 0x36, 0x7E]) }
-        addKey("Enter") { $0.sendBytes([0x0D]) }
-        addKey("y") { $0.sendBytes([0x79]) }
-        addKey("n") { $0.sendBytes([0x6E]) }
     }
 
-    private func makeKeyButton(_ label: String, behavior: ExtraKeyButton.Behavior) -> ExtraKeyButton {
-        let button = ExtraKeyButton(behavior: behavior)
-        button.setTitle(label, for: .normal)
-        button.setTitleColor(.white, for: .normal)
-        button.titleLabel?.font = .systemFont(ofSize: 15)
-        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 16, bottom: 8, right: 16)
-        button.layer.cornerRadius = 6
-        button.layer.masksToBounds = true
-        button.backgroundColor = ExtraKeyButton.normalBackground
-        return button
+    // MARK: - UIGestureRecognizerDelegate
+
+    /// Our wheel gesture must NOT run simultaneously with the scroll view's built-in pan —
+    /// otherwise both fire: we send wheel events AND SwiftTerm sends drag (text-select) events,
+    /// which is why scrolling sometimes became "copied to clipboard". When mouse tracking is on
+    /// we claim the gesture exclusively.
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+        false
     }
 
-    private func addKey(_ label: String, _ action: @escaping (TerminalViewController) -> Void) {
-        let button = makeKeyButton(label, behavior: .press)
-        button.onPress = { [weak self] in
-            guard let self else { return }
-            action(self)
+    /// Let the scroll view's own pan fail when we're handling the gesture (mouse tracking on),
+    /// so only our wheel events reach the TUI. The scroll view's pan runs for plain-shell scrollback.
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        // Only require-fail the scroll view's pan (UIPanGestureRecognizer on a UIScrollView),
+        // and only when we're actually going to handle the scroll (mouse tracking on).
+        guard otherGestureRecognizer is UIPanGestureRecognizer,
+              otherGestureRecognizer.view === terminalView else { return false }
+        let term = terminalView.getTerminal()
+        return term.mouseMode != .off && terminalView.allowMouseReporting
+    }
+
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        let term = terminalView.getTerminal()
+        // Only take over when a TUI is mouse-tracking; otherwise let the scroll view pan.
+        return term.mouseMode != .off && terminalView.allowMouseReporting
+    }
+
+    // MARK: - Keyboard avoidance
+
+    /// Lifts the extra-keys bar (and thus the terminal above it) when the keyboard appears, so
+    /// the terminal shrinks to the visible area and SwiftTerm resizes the PTY. Uses
+    /// keyboardWillChangeFrame with a coordinate conversion into the window (not the view, which
+    /// can be misleading when the view itself is offset).
+    private func registerKeyboardNotifications() {
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(keyboardWillChangeFrame(_:)),
+            name: UIResponder.keyboardWillChangeFrameNotification, object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(keyboardWillHide(_:)),
+            name: UIResponder.keyboardWillHideNotification, object: nil
+        )
+    }
+
+    @objc private func keyboardWillChangeFrame(_ note: Notification) {
+        guard let frameEnd = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+        let duration = (note.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double) ?? 0.25
+        let curveRaw = (note.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? Int) ?? UIView.AnimationCurve.easeInOut.rawValue
+
+        // The keyboard frame is in window coordinates. Convert into our view's coordinate
+        // space and measure how much it overlaps the bottom of our view — that's the lift.
+        let kbInView = view.convert(frameEnd, from: nil)
+        // Only count the part of the keyboard that actually overlaps our view.
+        let viewBottom = view.bounds.height
+        let overlap = max(0, viewBottom - kbInView.origin.y)
+        adjustBottom(to: overlap, duration: duration, curve: curveRaw)
+    }
+
+    @objc private func keyboardWillHide(_ note: Notification) {
+        let duration = (note.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double) ?? 0.25
+        let curve = (note.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? Int) ?? UIView.AnimationCurve.easeInOut.rawValue
+        adjustBottom(to: 0, duration: duration, curve: curve)
+    }
+
+    private func adjustBottom(to height: CGFloat, duration: Double, curve: Int) {
+        guard let constraint = extraKeysBottomConstraint else { return }
+        print("[AiDevMob] keyboard lift bottom by \(height)")
+        constraint.constant = -height
+        UIView.animate(withDuration: duration, delay: 0,
+                       options: UIView.AnimationOptions(rawValue: UInt(curve << 16))) { [weak self] in
+            self?.view.layoutIfNeeded()
         }
-        extraKeysStack.addArrangedSubview(button)
     }
 
-    private func addRepeatableKey(_ label: String, _ action: @escaping (TerminalViewController) -> Void) {
-        let button = makeKeyButton(label, behavior: .repeatable)
-        button.onPress = { [weak self] in
-            guard let self else { return }
-            action(self)
-        }
-        extraKeysStack.addArrangedSubview(button)
-    }
-
-    private func addToggleKey(_ label: String, _ action: @escaping (TerminalViewController, Bool) -> Void) {
-        let button = makeKeyButton(label, behavior: .toggle)
-        button.onToggleChange = { [weak self] toggled in
-            guard let self else { return }
-            action(self, toggled)
-        }
-        extraKeysStack.addArrangedSubview(button)
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
 
     // MARK: - Sending keys
@@ -259,49 +483,19 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate {
         onSend(bytes)
     }
 
-    /// Final byte of a cursor-key sequence, matching Termux's `KeyHandler.getCode`.
-    private enum CursorKey: UInt8 {
-        case up = 0x41 // A
-        case down = 0x42 // B
-        case right = 0x43 // C
-        case left = 0x44 // D
-        case home = 0x48 // H
-        case end = 0x46 // F
-    }
-
-    /// Sends an arrow key. Arrows and Home/End have two encodings — `ESC [ x` normally and
-    /// `ESC O x` once the foreground program switches the terminal into application-cursor
-    /// mode (DECCKM), which every full-screen TUI does (vim, less, htop, Claude Code).
-    /// SwiftTerm exposes the mode directly via `Terminal.applicationCursor`; this replaces
-    /// the Android path that had the Termux emulator resolve it internally.
-    private func arrowKey(_ direction: CursorKey) {
-        sendCursorKey(direction.rawValue)
-    }
-
-    private func cursorKey(_ key: CursorKey) {
-        sendCursorKey(key.rawValue)
-    }
-
-    private func sendCursorKey(_ finalByte: UInt8) {
+    /// Builds an arrow/Home/End byte sequence respecting the terminal's application-cursor
+    /// mode (DECCKM): full-screen TUIs (vim, tmux, htop) switch to it, and the encoding flips
+    /// from `ESC [ x` to `ESC O x`. SwiftTerm exposes the mode on its Terminal; the accessory
+    /// bar calls this so its arrow keys work inside TUIs the same as the soft keyboard.
+    private func sendCursorKey(finalByte: UInt8) {
         let leader: UInt8 = terminalView.getTerminal().applicationCursor ? 0x4F : 0x5B // ESC O / ESC [
         sendBytes([0x1B, leader, finalByte])
     }
 
-    /// Sends tmux's prefix followed by `key`, which is how every tmux binding is invoked.
-    /// The prefix is whatever the user configured — Ctrl-B unless they remapped it,
-    /// commonly to Ctrl-A — read from UserDefaults so a settings screen can write it later
-    /// (Android reads `AppSettings.tmuxPrefix`).
-    private func sendTmuxKey(_ key: String) {
-        guard config.tmuxSession.isNotBlank else { return }
-        // Ctrl-<letter> is the letter's position in the alphabet: Ctrl-A is 1, Ctrl-B is 2.
-        let control = UInt8(tmuxPrefix.asciiValue! - Character("a").asciiValue! + 1)
-        sendBytes([control])
-        sendBytes(Array(key.utf8))
-    }
-
+    /// The letter of tmux's prefix key (the "b" in Ctrl-B). Defaults to "b"; a future settings
+    /// screen can write `tmuxPrefix` into UserDefaults to change it (Android reads
+    /// `AppSettings.tmuxPrefix`).
     private static let tmuxPrefixDefaultsKey = "tmuxPrefix"
-
-    /// The letter of tmux's prefix key (the "b" in Ctrl-B). Defaults to "b".
     private var tmuxPrefix: Character {
         if let stored = UserDefaults.standard.string(forKey: Self.tmuxPrefixDefaultsKey)?.lowercased().first,
            stored >= "a" && stored <= "z" {
@@ -324,6 +518,7 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate {
     // MARK: - TerminalViewDelegate
 
     func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
+        print("[AiDevMob] sizeChanged: \(newCols)x\(newRows)")
         onResize?(newCols, newRows)
     }
 
@@ -356,6 +551,151 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate {
 
     func rangeChanged(source: TerminalView, startY: Int, endY: Int) {
         // The renderer repaints itself; nothing to forward.
+    }
+}
+
+// MARK: - ExtraKeysAccessoryBar
+
+/// A fixed-height bar of extra keys (ESC/CTRL/arrows/TAB/…), mounted as the terminal's
+/// `inputAccessoryView` so it floats just above the soft keyboard — replacing SwiftTerm's
+/// built-in `TerminalAccessory`. The keys scroll horizontally since there are more than fit
+/// on a phone width.
+///
+/// Subclasses `UIInputView` (the class Apple designed for input accessory views) so UIKit
+/// resolves the bar's height correctly. A plain `UIView` as `inputAccessoryView` is unreliable
+/// on iOS — UIKit can collapse it to zero height, which is why an earlier attempt showed no keys.
+private final class ExtraKeysAccessoryBar: UIView {
+
+    private let scrollView = UIScrollView()
+    private let stack = UIStackView()
+
+    /// Height of the bar.
+    static let barHeight: CGFloat = 44
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = ExtraKeyButton.normalBackground
+
+        scrollView.showsHorizontalScrollIndicator = false
+        // delaysContentTouches MUST stay true (the default): it lets the scroll view detect a
+        // horizontal drag (scroll) before forwarding the touch to a button. Setting it false
+        // (an earlier mistake) forwarded every touch straight to the button, so the scroll view
+        // never saw a pan and the row wouldn't scroll — even though contentSize > frame.
+        scrollView.delaysContentTouches = true
+        scrollView.canCancelContentTouches = true
+        scrollView.alwaysBounceHorizontal = true
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(scrollView)
+
+        stack.axis = .horizontal
+        stack.alignment = .center
+        stack.spacing = 6
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.addSubview(stack)
+
+        // frameLayoutGuide = the visible strip (bar width); contentLayoutGuide = scrollable
+        // content. The stack is pinned only to the contentLayoutGuide so it grows with its
+        // buttons and scrolls when wider than the visible strip.
+        NSLayoutConstraint.activate([
+            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
+
+            stack.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor, constant: 6),
+            stack.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor, constant: -6),
+            stack.heightAnchor.constraint(equalTo: scrollView.frameLayoutGuide.heightAnchor),
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    /// Fixed height for Auto Layout (the bar is sized by an explicit constraint too).
+    override var intrinsicContentSize: CGSize {
+        CGSize(width: UIView.noIntrinsicMetric, height: Self.barHeight)
+    }
+
+    /// Diagnostic dump of scroll state.
+    func logScrollState() {
+        print("[AiDevMob] scroll frame=\(scrollView.frame) contentSize=\(scrollView.contentSize) isScrollEnabled=\(scrollView.isScrollEnabled)")
+        print("[AiDevMob] stack frame=\(stack.frame) arrangedCount=\(stack.arrangedSubviews.count)")
+        for (i, v) in stack.arrangedSubviews.enumerated() {
+            if let b = v as? UIButton { print("[AiDevMob]   key[\(i)]='\(b.currentTitle ?? "?")' frame=\(b.frame)") }
+        }
+        // Check gesture recognizers that might steal horizontal pans.
+        if let barSuperview = superview {
+            let stealers = barSuperview.gestureRecognizers ?? []
+            print("[AiDevMob] parent gestureRecognizers: \(stealers.count)")
+            for g in stealers {
+                print("[AiDevMob]   \(type(of: g)) del=+\(g.delaysTouchesBegan) canc=\(g.cancelsTouchesInView)")
+            }
+        }
+        // The TerminalView is a sibling UIScrollView; its pan gesture may win over ours.
+        print("[AiDevMob] scroll.gestureRecognizers: \(scrollView.gestureRecognizers?.count ?? 0)")
+        print("[AiDevMob] scroll.isScrollEnabled=\(scrollView.isScrollEnabled) pan allowed=\(scrollView.panGestureRecognizer.isEnabled)")
+    }
+
+    /// Populates the key row. The closures forward to the controller:
+    /// - `send`: raw bytes straight to SSH.
+    /// - `setCtrl`: toggles the Ctrl modifier for soft-keyboard input.
+    /// - `cursor`: arrow/Home/End final byte, resolved against application-cursor mode.
+    /// - `tmux`: tmux prefix + a window-management key.
+    func configure(
+        config: ConnectionConfig,
+        send: @escaping ([UInt8]) -> Void,
+        setCtrl: @escaping (Bool) -> Void,
+        cursor: @escaping (UInt8) -> Void,
+        tmux: @escaping (String) -> Void,
+        hideKeyboard: @escaping () -> Void
+    ) {
+        // Order matches Android's `buildExtraKeysRow`: ESC, then cursor keys early (the row
+        // scrolls, and these are used constantly for shell history / TUI nav).
+        addKey("ESC", .press) { _ in send([0x1B]) }
+        addKey("CTRL", .toggle) { btn in setCtrl(btn.isToggledOn) }
+        addKey("←", .repeatable) { _ in cursor(0x44) } // D
+        addKey("↓", .repeatable) { _ in cursor(0x42) } // B
+        addKey("↑", .repeatable) { _ in cursor(0x41) } // A
+        addKey("→", .repeatable) { _ in cursor(0x43) } // C
+        if config.tmuxSession.isNotBlank {
+            addKey("W+", .press) { _ in tmux("c") }
+            addKey("◀W", .press) { _ in tmux("p") }
+            addKey("W▶", .press) { _ in tmux("n") }
+        }
+        addKey("TAB", .press) { _ in send([0x09]) }
+        addKey("S-TAB", .press) { _ in send([0x1B, 0x5B, 0x5A]) }
+        addKey("^C", .press) { _ in send([0x03]) }
+        addKey("^D", .press) { _ in send([0x04]) }
+        addKey("Home", .press) { _ in cursor(0x48) } // H
+        addKey("End", .press) { _ in cursor(0x46) } // F
+        addKey("PgUp", .repeatable) { _ in send([0x1B, 0x5B, 0x35, 0x7E]) }
+        addKey("PgDn", .repeatable) { _ in send([0x1B, 0x5B, 0x36, 0x7E]) }
+        addKey("Enter", .press) { _ in send([0x0D]) }
+        addKey("y", .press) { _ in send([0x79]) }
+        addKey("n", .press) { _ in send([0x6E]) }
+        // Keyboard dismiss: drops the soft keyboard so the terminal is larger; tapping the
+        // terminal area (or the key again) re-shows it.
+        addKey("⌨", .press) { _ in hideKeyboard() }
+    }
+
+    private func addKey(_ label: String, _ behavior: ExtraKeyButton.Behavior, _ action: @escaping (ExtraKeyButton) -> Void) {
+        let button = ExtraKeyButton(behavior: behavior)
+        button.setTitle(label, for: .normal)
+        button.setTitleColor(.white, for: .normal)
+        button.titleLabel?.font = .systemFont(ofSize: 14, weight: .medium)
+        button.contentEdgeInsets = UIEdgeInsets(top: 6, left: 14, bottom: 6, right: 14)
+        button.layer.cornerRadius = 6
+        button.layer.masksToBounds = true
+        button.backgroundColor = ExtraKeyButton.normalBackground
+        switch behavior {
+        case .press, .repeatable:
+            button.onPress = { action(button) }
+        case .toggle:
+            button.onToggleChange = { _ in action(button) }
+        }
+        stack.addArrangedSubview(button)
     }
 }
 
@@ -392,6 +732,9 @@ private final class ExtraKeyButton: UIButton {
     private var toggled = false {
         didSet { onToggleChange(toggled) }
     }
+
+    /// Current on/off state for `.toggle` buttons (read after a toggle change).
+    var isToggledOn: Bool { toggled }
 
     init(behavior: Behavior) {
         self.behavior = behavior

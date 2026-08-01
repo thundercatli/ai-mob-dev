@@ -97,6 +97,13 @@ struct ConnectionEditView: View {
 
     @State private var credentials: [Credential] = []
     @State private var tunnels: [FrpcTunnel] = []
+    /// tmux-probe state: loading flag, the sessions found (when probing succeeds), and an
+    /// error message (when it fails). Mirrors Android's `probing` + `showTmuxSessionPicker`.
+    @State private var tmuxProbing = false
+    @State private var tmuxSessions: TmuxSessionList?
+    @State private var tmuxProbeError: String?
+    @State private var showingNewSessionPrompt = false
+    @State private var newSessionName = ""
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -145,8 +152,31 @@ struct ConnectionEditView: View {
                 }
             }
 
-            Section("终端") {
+            Section {
                 TextField("Tmux 会话名", text: $config.tmuxSession)
+                    .autocapitalization(.none)
+                    .disableAutocorrection(true)
+                Button {
+                    probeTmux()
+                } label: {
+                    if tmuxProbing {
+                        HStack { ProgressView(); Text("探测中…") }
+                    } else {
+                        Label("探测 tmux 会话", systemImage: "magnifyingglass")
+                    }
+                }
+                .disabled(tmuxProbing)
+                if let err = tmuxProbeError {
+                    Text(err).font(.caption).foregroundColor(.red)
+                }
+            } header: {
+                Text("终端")
+            } footer: {
+                if config.tmuxSession.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text("留空则进入普通 shell；填入会话名则用 `tmux new-session -A` 创建或附加该会话。")
+                } else {
+                    Text("将附加或创建 tmux 会话「\(config.tmuxSession)」。")
+                }
             }
 
             Section("隧道") {
@@ -175,7 +205,169 @@ struct ConnectionEditView: View {
             credentials = CredentialStore().list()
             tunnels = FrpcTunnelStore().list()
         }
+        .sheet(item: $tmuxSessions) { list in
+            TmuxSessionPicker(
+                sessions: list.sessions,
+                onSelect: { name in
+                    config.tmuxSession = name
+                    tmuxSessions = nil
+                },
+                onCancel: { tmuxSessions = nil }
+            )
+        }
+        .alert("新建 tmux 会话", isPresented: $showingNewSessionPrompt) {
+            TextField("会话名", text: $newSessionName)
+                .autocapitalization(.none)
+            Button("确定") {
+                let trimmed = newSessionName.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    config.tmuxSession = trimmed
+                }
+                newSessionName = ""
+            }
+            Button("取消", role: .cancel) { newSessionName = "" }
+        }
     }
+
+    // MARK: - tmux probe
+
+    /// Connects (through the configured tunnel, if any) and lists the remote tmux sessions,
+    /// then shows the picker. Mirrors Android's `probeTmuxSessions`.
+    private func probeTmux() {
+        tmuxProbing = true
+        tmuxProbeError = nil
+        let resolved = CredentialStore().resolve(config)
+        guard !resolved.username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            tmuxProbing = false
+            tmuxProbeError = "用户名不能为空，请先配置凭证。"
+            return
+        }
+
+        Task {
+            // If a tunnel is configured, start it (and wait) before probing — same gate the
+            // terminal uses. SSH must reach sshd through the tunnel's local listener.
+            let sshConfig = await ensureTunnel(resolved)
+
+            do {
+                let sessions = try await TmuxSessionProbe.list(config: sshConfig)
+                await MainActor.run {
+                    tmuxProbing = false
+                    if sessions.isEmpty {
+                        tmuxProbeError = "远端没有运行中的 tmux 会话。"
+                    } else {
+                        tmuxSessions = TmuxSessionList(sessions: sessions)
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    tmuxProbing = false
+                    tmuxProbeError = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    /// Starts the configured tunnel if needed and returns the SSH config with host/port
+    /// redirected to the tunnel's local listener (the same redirection the terminal uses).
+    private func ensureTunnel(_ config: ConnectionConfig) async -> ConnectionConfig {
+        guard let tunnelId = config.tunnelId,
+              let tunnel = FrpcTunnelStore().get(id: tunnelId),
+              !TunnelRuntime.shared.isRunning(tunnelId),
+              let server = FrpsServerStore().get(id: tunnel.serverId) else {
+            return config
+        }
+        let params = VisitorParams(
+            id: tunnel.id,
+            serverAddr: server.serverAddr,
+            serverPort: server.serverPort,
+            token: server.authToken ?? "",
+            serverName: tunnel.serverName,
+            secretKey: tunnel.secretKey,
+            bindPort: tunnel.bindPort
+        )
+        do {
+            try TunnelRuntime.shared.start(params)
+            _ = await TunnelRuntime.shared.awaitRunning(tunnelId, timeout: 20)
+        } catch {
+            // Probe will fail with a clearer SSH error; let it through.
+        }
+        var redirected = config
+        redirected.host = "127.0.0.1"
+        redirected.port = tunnel.bindPort
+        return redirected
+    }
+}
+
+// MARK: - TmuxSessionPicker
+
+/// Bottom-style sheet listing remote tmux sessions for the user to pick, plus the two escape
+/// hatches Android's picker has: name a new session, or skip tmux. Mirrors
+/// `showTmuxSessionPicker` + `dialog_tmux_sessions.xml`.
+private struct TmuxSessionPicker: View {
+    let sessions: [TmuxSession]
+    let onSelect: (String) -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(sessions) { session in
+                        Button {
+                            onSelect(session.name)
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(session.name)
+                                        .font(.system(.body, design: .monospaced))
+                                        .foregroundColor(.primary)
+                                    Text("\(session.windows) 个窗口")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                if session.attached {
+                                    Text("已附加")
+                                        .font(.caption2)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 3)
+                                        .background(Color.orange.opacity(0.2))
+                                        .foregroundColor(.orange)
+                                        .clipShape(Capsule())
+                                }
+                            }
+                        }
+                    }
+                } header: {
+                    Text("远端会话（\(sessions.count)）")
+                }
+
+                Section {
+                    Button {
+                        onSelect("") // skip tmux
+                    } label: {
+                        Label("不使用 tmux", systemImage: "xmark.circle")
+                            .foregroundColor(.primary)
+                    }
+                }
+            }
+            .navigationTitle("选择 tmux 会话")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { onCancel() }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - TmuxSessionList (sheet item)
+
+/// Identifiable wrapper so a `.sheet(item:)` can present the probed session list.
+private struct TmuxSessionList: Identifiable {
+    let id = UUID()
+    let sessions: [TmuxSession]
 }
 
 // MARK: - CredentialListView

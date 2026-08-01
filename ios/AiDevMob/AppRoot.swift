@@ -69,8 +69,14 @@ final class AppRootCoordinator: ObservableObject {
             return
         }
 
-        // 2. If a tunnel is configured and not already running, start it.
-        if let tunnelId = resolved.tunnelId, !TunnelRuntime.shared.isRunning(tunnelId) {
+        // 2. If a tunnel is configured, route SSH through its local listener. The frpc STCP
+        //    visitor listens on 127.0.0.1:<bindPort>; SSH must dial THAT, not config.port.
+        //    Android relies on the user manually setting config.port == bindPort; iOS redirects
+        //    automatically so the two stay in sync without duplicate config.
+        let sshConfig = Self.redirectedThroughTunnel(resolved)
+
+        // 3. If a tunnel is configured and not already running, start it.
+        if let tunnelId = sshConfig.tunnelId, !TunnelRuntime.shared.isRunning(tunnelId) {
             guard let tunnel = FrpcTunnelStore().get(id: tunnelId) else {
                 showAlert(title: "无法连接", message: "关联的隧道配置不存在或被删除。")
                 return
@@ -91,8 +97,8 @@ final class AppRootCoordinator: ObservableObject {
             )
 
             // Show tunnel-starting status immediately.
-            let vc = makeTerminalVC(config: resolved)
-            vc.showStatus(TerminalViewController.statusTunnelStarting)
+            let vc = makeTerminalVC(config: sshConfig)
+            vc.setStatus(.tunnelStarting)
             pushTerminal(vc)
 
             // Start tunnel and await running state.
@@ -102,43 +108,54 @@ final class AppRootCoordinator: ObservableObject {
                     try TunnelRuntime.shared.start(params)
                     let state = await TunnelRuntime.shared.awaitRunning(tunnelId, timeout: 20)
                     if state == .running {
-                        await self.startSsh(config: resolved, terminalVC: vc)
+                        await self.startSsh(config: sshConfig, terminalVC: vc)
                     } else {
                         let err = TunnelRuntime.shared.lastError(tunnelId)
-                        await MainActor.run {
-                            vc.showStatus("隧道启动失败：\(err.isEmpty ? "超时" : err)")
-                        }
+                        vc.setStatus(.failed("隧道启动失败：\(err.isEmpty ? "超时" : err)"))
                     }
                 } catch {
-                    await MainActor.run {
-                        vc.showStatus("隧道启动失败：\(error.localizedDescription)")
-                    }
+                    vc.setStatus(.failed("隧道启动失败：\(error.localizedDescription)"))
                 }
             }
         } else {
             // No tunnel path or tunnel already running – go straight to SSH.
-            let vc = makeTerminalVC(config: resolved)
-            vc.showStatus(TerminalViewController.statusConnecting)
+            let vc = makeTerminalVC(config: sshConfig)
+            vc.setStatus(.connecting)
             pushTerminal(vc)
 
             Task { [weak self] in
                 guard let self else { return }
-                await startSsh(config: resolved, terminalVC: vc)
+                await startSsh(config: sshConfig, terminalVC: vc)
             }
         }
+    }
+
+    /// When `config` references a tunnel, rewrites host/port to the tunnel's local listener
+    /// (`127.0.0.1:<bindPort>`) so SSH dials the frpc visitor, not the config's port. Returns
+    /// the config unchanged when no tunnel is set (direct connection).
+    private static func redirectedThroughTunnel(_ config: ConnectionConfig) -> ConnectionConfig {
+        guard let tunnelId = config.tunnelId,
+              let tunnel = FrpcTunnelStore().get(id: tunnelId) else {
+            return config
+        }
+        guard tunnel.bindPort > 0 else { return config }
+        var redirected = config
+        redirected.host = "127.0.0.1"
+        redirected.port = tunnel.bindPort
+        return redirected
     }
 
     /// Reconnect with exponential backoff, mirroring Android's reconnect loop (max 5 attempts).
     func reconnect(_ config: ConnectionConfig) {
         guard reconnectAttempts < maxReconnectAttempts else {
-            terminalVC?.showStatus(TerminalViewController.statusDisconnected)
+            terminalVC?.setStatus(.disconnected)
             return
         }
 
         reconnectAttempts += 1
         let backoff: UInt64 = UInt64(pow(2.0, Double(reconnectAttempts - 1))) * 1_000_000_000
         // Show reconnecting status.
-        terminalVC?.showStatus(TerminalViewController.statusReconnecting)
+        terminalVC?.setStatus(.reconnecting)
 
         Task { [weak self] in
             guard let self else { return }
@@ -153,17 +170,13 @@ final class AppRootCoordinator: ObservableObject {
             // Re-resolve credential (may have been updated).
             let resolved = CredentialStore().resolve(config)
             guard !resolved.username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                await MainActor.run {
-                    terminalVC?.showStatus(TerminalViewController.statusDisconnected)
-                }
+                terminalVC?.setStatus(.disconnected)
                 return
             }
 
             // Restart tunnel if needed – only if it's still configured and not running.
             if let tunnelId = resolved.tunnelId, !TunnelRuntime.shared.isRunning(tunnelId) {
-                await MainActor.run {
-                    terminalVC?.showStatus(TerminalViewController.statusTunnelStarting)
-                }
+                terminalVC?.setStatus(.tunnelStarting)
                 if let tunnel = FrpcTunnelStore().get(id: tunnelId),
                    let server = FrpsServerStore().get(id: tunnel.serverId) {
                     let params = VisitorParams(
@@ -179,21 +192,20 @@ final class AppRootCoordinator: ObservableObject {
                         try TunnelRuntime.shared.start(params)
                         let state = await TunnelRuntime.shared.awaitRunning(tunnelId, timeout: 20)
                         if state != .running {
-                            await MainActor.run {
-                                terminalVC?.showStatus("隧道重连失败")
-                            }
+                            terminalVC?.setStatus(.failed("隧道重连失败"))
                             return
                         }
                     } catch {
-                        await MainActor.run {
-                            terminalVC?.showStatus("隧道重连失败：\(error.localizedDescription)")
-                        }
+                        terminalVC?.setStatus(.failed("隧道重连失败：\(error.localizedDescription)"))
                         return
                     }
                 }
             }
 
-            await startSsh(config: resolved, terminalVC: terminalVC)
+            // Route SSH through the tunnel's local listener when a tunnel is configured (same
+            // redirection as connect(_:)), so reconnect dials the visitor port too.
+            let sshConfig = Self.redirectedThroughTunnel(resolved)
+            await startSsh(config: sshConfig, terminalVC: terminalVC)
         }
     }
 
@@ -204,9 +216,17 @@ final class AppRootCoordinator: ObservableObject {
         let vc = TerminalViewController(config: config)
 
         vc.onResize = { [weak self] cols, rows in
-            guard let connector = self?.connector else { return }
+            guard let connector = self?.connector else {
+                print("[AiDevMob] onResize: no connector, skipping \(cols)x\(rows)")
+                return
+            }
             Task {
-                try? await connector.resize(cols: cols, rows: rows)
+                do {
+                    try await connector.resize(cols: cols, rows: rows)
+                    print("[AiDevMob] PTY resized to \(cols)x\(rows)")
+                } catch {
+                    print("[AiDevMob] PTY resize failed: \(error)")
+                }
             }
         }
 
@@ -221,6 +241,12 @@ final class AppRootCoordinator: ObservableObject {
                 await self?.connector?.close()
                 self?.connector = nil
             }
+        }
+
+        // Back button: pop the terminal screen back to the management tabs.
+        vc.onClose = { [weak self] in
+            guard let self else { return }
+            self.navigationController.popViewController(animated: true)
         }
 
         return vc
@@ -259,26 +285,23 @@ final class AppRootCoordinator: ObservableObject {
         }
 
         self.connector = connector
-
-        await MainActor.run {
-            terminalVC.showStatus(TerminalViewController.statusConnecting)
-        }
+        terminalVC.setStatus(.connecting)
 
         do {
+            // Use the terminal view's ACTUAL current dimensions for the initial PTY size, not a
+            // hardcoded 80x24. A mismatch means tmux/shell starts at the wrong size and only
+            // corrects after the first sizeChanged fires — which can flash or clip content.
+            let term = terminalVC.currentTerminalSize()
             try await connector.start(
-                initialColumns: 80,
-                initialRows: 24,
+                initialColumns: term.cols,
+                initialRows: term.rows,
                 stdout: { [weak terminalVC] bytes in
                     terminalVC?.feed(bytes)
                 },
                 onDisconnect: { [weak self] error in
                     guard let self else { return }
                     Task { @MainActor in
-                        terminalVC.showStatus(
-                            error != nil
-                                ? TerminalViewController.statusDisconnected
-                                : TerminalViewController.statusDisconnected
-                        )
+                        terminalVC.setStatus(.disconnected)
                         // Schedule reconnect if we haven't exhausted attempts.
                         if self.reconnectAttempts < self.maxReconnectAttempts {
                             self.reconnect(config)
@@ -287,16 +310,10 @@ final class AppRootCoordinator: ObservableObject {
                 }
             )
 
-            // Connected successfully – hide status banner.
-            await MainActor.run {
-                terminalVC.hideStatus()
-                // Remember as last-used.
-                ConnectionStore().lastUsedId = config.id
-            }
+            // start() returned normally = shell exited cleanly.
+            ConnectionStore().lastUsedId = config.id
         } catch {
-            await MainActor.run {
-                terminalVC.showStatus("连接失败：\(error.localizedDescription)")
-            }
+            terminalVC.setStatus(.failed("连接失败：\(error.localizedDescription)"))
         }
     }
 
