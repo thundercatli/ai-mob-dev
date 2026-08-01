@@ -348,10 +348,31 @@ final class SshTerminalConnector {
     /// Runs a single command on the host described by `config` over a fresh SSH connection and
     /// returns its combined stdout, then closes the connection. Used by `TmuxSessionProbe` (the
     /// iOS port of Android's), which needs to `tmux list-sessions` without disturbing the live
-    /// terminal session — so this never touches the PTY channel and opens its own client.
+    /// terminal session — so this opens its own client and tears it down when done.
     ///
-    /// - Throws: any connection/auth/exec failure.
+    /// **Implementation note — runs the command on a PTY, not via `withExec`.** Citadel's
+    /// `withExec` fails with `ChannelError.ioOnClosedChannel` over an frpc STCP visitor tunnel
+    /// (the PTY path works fine on the same tunnel), so we drive a throwaway PTY instead: open
+    /// the channel, echo a unique sentinel after the command, read output until the sentinel
+    /// appears, then close. This is the SSH equivalent of "run a command in a login shell and
+    /// capture the output" and matches how Android's sshj probe establishes its own session.
+    ///
+    /// Retries once on a connection failure: when the tunnel was just started, frpc reports
+    /// `.running` a moment before its local TCP listener actually accepts connections, so the
+    /// first dial can fail with a NIO `ChannelError` even though the very next attempt succeeds.
+    /// One 400ms-delayed retry papers over that race without making a healthy connection slower.
+    ///
+    /// - Throws: any connection/auth/PTY failure (after the retry).
     static func exec(config: ConnectionConfig, command: String) async throws -> String {
+        do {
+            return try await execOnce(config: config, command: command)
+        } catch {
+            try? await Task.sleep(nanoseconds: 400_000_000) // 400ms
+            return try await execOnce(config: config, command: command)
+        }
+    }
+
+    private static func execOnce(config: ConnectionConfig, command: String) async throws -> String {
         let validator = TofuHostKeyValidator(host: config.host, port: config.port)
         let client = try await SSHClient.connect(
             host: config.host,
@@ -360,18 +381,119 @@ final class SshTerminalConnector {
             hostKeyValidator: SSHHostKeyValidator.custom(validator),
             reconnect: .never
         )
-        defer { Task { try? await client.close() } }
+        // CRITICAL: close MUST complete before this function returns. An frpc STCP visitor
+        // typically accepts only ONE concurrent connection; leaving the client open makes the
+        // next probe attempt (or the shell-flag retry inside TmuxSessionProbe.list) fail with
+        // ChannelError.ioOnClosedChannel because the visitor's single slot is still held.
+        // `defer` can't await, so we capture the result and close explicitly on every exit path.
+        let request = SSHChannelRequestEvent.PseudoTerminalRequest(
+            wantReply: true,
+            term: "xterm-256color",
+            terminalCharacterWidth: 80,
+            terminalRowHeight: 24,
+            terminalPixelWidth: 0,
+            terminalPixelHeight: 0,
+            terminalModes: SSHTerminalModes([:])
+        )
 
-        var collected = [UInt8]()
-        try await client.withExec(command) { inbound, _ in
-            for try await output in inbound {
-                switch output {
-                case .stdout(let buffer), .stderr(let buffer):
-                    collected.append(contentsOf: buffer.readableBytesView)
+        // Unique sentinel echoed after the command so we know when its output is fully flushed —
+        // a PTY stream never EOFs while the shell is alive, so we read until the sentinel shows,
+        // then send `exit` to close the channel cleanly.
+        let sentinel = "AIDEVMOB_PROBE_DONE_\(UUID().uuidString)"
+        let payload = command + "; printf '\\n\(sentinel)\\n'; exit\n"
+
+        do {
+            // Run the PTY on the SAME async context as connect (no TaskGroup/child task):
+            // Citadel's SSHClient is backed by a NIO event loop that misbehaves when the PTY
+            // runs in a different structured-concurrency context than the connect that opened
+            // it — the channel reports ioOnClosedChannel even though connect succeeded. The
+            // main terminal connection (start()) calls withPTY the same direct way and works.
+            // Timeout is enforced separately by closing the client after 8s, which EOFs the PTY
+            // stream and lets us return what we collected.
+            let timeoutTask = Task {
+                try? await Task.sleep(nanoseconds: 8_000_000_000) // 8s
+                try? await client.close()
+            }
+
+            var collected = [UInt8]()
+            try await client.withPTY(request) { inbound, outbound in
+                // Give the shell a moment to be ready before writing the command — a PTY opens
+                // before sshd has fully started the shell; writing too early loses the input.
+                try? await Task.sleep(nanoseconds: 600_000_000) // 600ms
+                try await outbound.write(ByteBuffer(string: payload))
+                for try await output in inbound {
+                    switch output {
+                    case .stdout(let buffer), .stderr(let buffer):
+                        collected.append(contentsOf: buffer.readableBytesView)
+                    }
+                    // Stop once the sentinel is fully flushed.
+                    if let text = String(bytes: collected, encoding: .utf8),
+                       text.contains(sentinel) {
+                        break
+                    }
                 }
             }
+            timeoutTask.cancel()
+            let text = String(bytes: collected, encoding: .utf8) ?? ""
+            let result = Self.cleanProbeOutput(text, sentinel: sentinel)
+            // Close before returning so the STCP visitor's single connection slot is freed.
+            try? await client.close()
+            return result
+        } catch {
+            // Close even on failure, then rethrow.
+            try? await client.close()
+            throw error
         }
-        return String(bytes: collected, encoding: .utf8) ?? ""
+    }
+
+    /// Trims captured PTY output to just the command's result:
+    /// 1. Cut everything after the sentinel (it and the exit that follows are not command output).
+    /// 2. Strip ANSI escape sequences (CSI `ESC [ ... letter`, OSC `ESC ] ... BEL`, and bare
+    ///    `ESC x` two-char sequences). A PTY echoes the command back with full colour/cursor
+    ///    escape codes; without stripping them, the echo of the command line fragments in ways
+    ///    that can fool the parser, and real output lines can get glued to prompt noise.
+    /// 3. Leave line-filtering to `TmuxSessionProbe.parse`, whose `compactMap` already drops any
+    ///    line that doesn't match the `name|windows|attached` shape — so residual shell noise
+    ///    (login banner, prompt) is harmless.
+    private static func cleanProbeOutput(_ text: String, sentinel: String) -> String {
+        var out = text
+        if let range = out.range(of: sentinel) {
+            out = String(out[out.startIndex..<range.lowerBound])
+        }
+        return Self.stripANSIEscape(out)
+    }
+
+    /// Removes ANSI escape sequences from a string. Handles CSI (`ESC[` ... final byte),
+    /// OSC (`ESC]` ... `BEL` or `ST`), and simple two-char `ESC x` sequences.
+    private static func stripANSIEscape(_ s: String) -> String {
+        var result = ""
+        var iter = s.unicodeScalars.makeIterator()
+        while let scalar = iter.next() {
+            // ESC = 0x1B
+            if scalar == "\u{001B}" {
+                guard let next = iter.next() else { break }
+                if next == "[" {
+                    // CSI: skip until a byte in 0x40..0x7E (the final byte)
+                    while let c = iter.next() {
+                        if (c.value >= 0x40 && c.value <= 0x7E) { break }
+                    }
+                } else if next == "]" {
+                    // OSC: skip until BEL (0x07) or ST (ESC \)
+                    while let c = iter.next() {
+                        if c == "\u{0007}" { break }
+                        if c == "\u{001B}" {
+                            // ST = ESC \ ; consume the backslash if present
+                            _ = iter.next()
+                            break
+                        }
+                    }
+                }
+                // else: two-char escape (ESC x), already consumed next; nothing more to skip.
+            } else {
+                result.unicodeScalars.append(scalar)
+            }
+        }
+        return result
     }
 
     /// Closes the SSH connection and ends the session; `onDisconnect` fires once the remote

@@ -19,6 +19,7 @@
 		9BC2F2B1E0F605FF8E0EE603 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2125420ABE07E144A236D7B7 /* AppDelegate.swift */; };
 		B0C50DE524AC185006F2E348 /* TerminalHostingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A02A91751560BF5DD7FF1BD /* TerminalHostingView.swift */; };
 		C45942EA88858EC644B7C243 /* Stores.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2333F90E491FB82C4347C682 /* Stores.swift */; };
+		CAFDD574E6CFB5C13C019704 /* AppDefaults.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3443C72B325DC93CB3C999AE /* AppDefaults.swift */; };
 		E9B55D9610AB507DD6AA64C1 /* AppRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A0DADD2F55F5A890061D986 /* AppRoot.swift */; };
 		FF2BA1C0A72A43C57A9F765F /* ManagementViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 486DBAD8A3C66F998D857578 /* ManagementViews.swift */; };
 		FFC2DF8867F082BF6A7A2C5B /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = 54407C469D02638D62628DA2 /* Citadel */; };
@@ -42,11 +43,12 @@
 		1A02A91751560BF5DD7FF1BD /* TerminalHostingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalHostingView.swift; sourceTree = "<group>"; };
 		2125420ABE07E144A236D7B7 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		2333F90E491FB82C4347C682 /* Stores.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Stores.swift; sourceTree = "<group>"; };
+		3443C72B325DC93CB3C999AE /* AppDefaults.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDefaults.swift; sourceTree = "<group>"; };
 		3EE88F2F1A6AED2678A0028F /* Frpclib.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Frpclib.xcframework; path = Frameworks/Frpclib.xcframework; sourceTree = "<group>"; };
 		486DBAD8A3C66F998D857578 /* ManagementViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagementViews.swift; sourceTree = "<group>"; };
 		6A0DADD2F55F5A890061D986 /* AppRoot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRoot.swift; sourceTree = "<group>"; };
 		705D116AA14238990FACAE0E /* TmuxSessionProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxSessionProbe.swift; sourceTree = "<group>"; };
-		7F398F5010724F6E877105EA /* AiDevMob.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AiDevMob.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7F398F5010724F6E877105EA /* AiDevMob.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AiDevMob.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B68C2170BE25154727EA0B52 /* TunnelRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelRuntime.swift; sourceTree = "<group>"; };
 		BC9D74CA98935B9D5EC2FFA7 /* TerminalViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalViewController.swift; sourceTree = "<group>"; };
 		C0E3150D3BD13E0786DE17C8 /* SshTerminalConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SshTerminalConnector.swift; sourceTree = "<group>"; };
@@ -71,6 +73,7 @@
 		0D1BCCB750D9D3A28D1D11AB /* Storage */ = {
 			isa = PBXGroup;
 			children = (
+				3443C72B325DC93CB3C999AE /* AppDefaults.swift */,
 				2333F90E491FB82C4347C682 /* Stores.swift */,
 			);
 			path = Storage;
@@ -185,7 +188,6 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					5FD193B8AD187EB39A36FC7C = {
-						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -218,6 +220,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CAFDD574E6CFB5C13C019704 /* AppDefaults.swift in Sources */,
 				9BC2F2B1E0F605FF8E0EE603 /* AppDelegate.swift in Sources */,
 				E9B55D9610AB507DD6AA64C1 /* AppRoot.swift in Sources */,
 				FF2BA1C0A72A43C57A9F765F /* ManagementViews.swift in Sources */,
@@ -271,7 +274,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = VZMD6TG275;
 				ENABLE_BITCODE = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -306,6 +309,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = H6HTR2J3WL;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -333,6 +337,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = H6HTR2J3WL;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -391,7 +396,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = VZMD6TG275;
 				ENABLE_BITCODE = NO;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

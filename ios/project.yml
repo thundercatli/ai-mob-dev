@@ -9,7 +9,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.9"
-    DEVELOPMENT_TEAM: ""          # set your Apple ID team in Xcode for sideload signing
+    DEVELOPMENT_TEAM: "VZMD6TG275"  # Apple Development: beyondcreation@163.com (auto from keychain)
     CODE_SIGN_STYLE: Automatic
     ENABLE_BITCODE: NO
 

@@ -67,6 +67,7 @@ struct ConnectionListView: View {
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     editingItem = ConnectionConfig(
+                        id: "",   // empty id marks a NEW connection (onSave assigns a real one)
                         name: "",
                         host: "",
                         port: 22,
@@ -85,7 +86,20 @@ struct ConnectionListView: View {
         .sheet(item: $editingItem) { config in
             NavigationStack {
                 ConnectionEditView(config: config, onSave: { saved in
-                    store.upsert(saved)
+                    // A NEW connection (created with id "") needs a real id before storing.
+                    let toSave = saved.id.isEmpty
+                        ? ConnectionConfig(
+                            id: UUID().uuidString,
+                            name: saved.name, host: saved.host, port: saved.port,
+                            credentialId: saved.credentialId, username: saved.username,
+                            authMethod: saved.authMethod, password: saved.password,
+                            privateKeyPem: saved.privateKeyPem,
+                            privateKeyPassphrase: saved.privateKeyPassphrase,
+                            tmuxSession: saved.tmuxSession, defaultPath: saved.defaultPath,
+                            tunnelId: saved.tunnelId
+                        )
+                        : saved
+                    store.upsert(toSave)
                     editingItem = nil
                     load()
                 })
@@ -214,6 +228,18 @@ struct ConnectionEditView: View {
         .onAppear {
             credentials = CredentialStore().list()
             tunnels = FrpcTunnelStore().list()
+            // Pre-fill the default credential + tunnel on a NEW connection (empty id), so the
+            // user doesn't have to pick the same ones every time. They can still override.
+            if config.id.isEmpty {
+                if config.credentialId == nil, let id = AppDefaults.defaultCredentialId,
+                   credentials.contains(where: { $0.id == id }) {
+                    config.credentialId = id
+                }
+                if config.tunnelId == nil, let id = AppDefaults.defaultTunnelId,
+                   tunnels.contains(where: { $0.id == id }) {
+                    config.tunnelId = id
+                }
+            }
         }
         .sheet(item: $tmuxSessions) { list in
             TmuxSessionPicker(
@@ -240,6 +266,23 @@ struct ConnectionEditView: View {
     }
 
     // MARK: - tmux probe
+
+    /// Translates a raw SSH/NIO error from the probe into a hint that points at the likely cause.
+    private static func friendlyProbeError(_ error: Error, hasTunnel: Bool) -> String {
+        let raw = error.localizedDescription
+        if raw.contains("ChannelError") || raw.contains("Channel") || raw.contains("connection") {
+            return hasTunnel
+                ? "无法连接：隧道未就绪或本地端口不可达，请稍候重试或检查隧道配置。"
+                : "无法连接到主机，请检查地址/端口和网络。"
+        }
+        if raw.contains("auth") || raw.contains("Auth") || raw.contains("password") {
+            return "认证失败，请检查用户名/密码或私钥配置。"
+        }
+        if raw.lowercased().contains("host key") {
+            return "主机密钥校验失败。"
+        }
+        return "探测失败：\(raw)"
+    }
 
     /// Connects (through the configured tunnel, if any) and lists the remote tmux sessions,
     /// then shows the picker. Mirrors Android's `probeTmuxSessions`.
@@ -271,36 +314,50 @@ struct ConnectionEditView: View {
             } catch {
                 await MainActor.run {
                     tmuxProbing = false
-                    tmuxProbeError = error.localizedDescription
+                    tmuxProbeError = Self.friendlyProbeError(error, hasTunnel: resolved.tunnelId != nil)
                 }
             }
         }
     }
 
-    /// Starts the configured tunnel if needed and returns the SSH config with host/port
-    /// redirected to the tunnel's local listener (the same redirection the terminal uses).
+    /// Starts the configured tunnel if needed (only when it isn't already running) and ALWAYS
+    /// returns the SSH config with host/port redirected to the tunnel's local listener — the
+    /// same redirection the terminal connection uses.
+    ///
+    /// The redirect must happen whether or not the tunnel was just started: if the tunnel is
+    /// already up (e.g. a connection was opened earlier this session), we skip the start but
+    /// still have to point SSH at `127.0.0.1:<bindPort>`. The earlier version returned the
+    /// un-redirected config when the tunnel was already running, so `exec` dialled the raw
+    /// host:port (only reachable through the tunnel) and failed with a NIO channel error.
     private func ensureTunnel(_ config: ConnectionConfig) async -> ConnectionConfig {
         guard let tunnelId = config.tunnelId,
-              let tunnel = FrpcTunnelStore().get(id: tunnelId),
-              !TunnelRuntime.shared.isRunning(tunnelId),
-              let server = FrpsServerStore().get(id: tunnel.serverId) else {
+              let tunnel = FrpcTunnelStore().get(id: tunnelId) else {
             return config
         }
-        let params = VisitorParams(
-            id: tunnel.id,
-            serverAddr: server.serverAddr,
-            serverPort: server.serverPort,
-            token: server.authToken ?? "",
-            serverName: tunnel.serverName,
-            secretKey: tunnel.secretKey,
-            bindPort: tunnel.bindPort
-        )
-        do {
-            try TunnelRuntime.shared.start(params)
-            _ = await TunnelRuntime.shared.awaitRunning(tunnelId, timeout: 20)
-        } catch {
-            // Probe will fail with a clearer SSH error; let it through.
+        guard tunnel.bindPort > 0 else { return config }
+
+        // Start the tunnel only if it isn't already up.
+        if !TunnelRuntime.shared.isRunning(tunnelId),
+           let server = FrpsServerStore().get(id: tunnel.serverId) {
+            let params = VisitorParams(
+                id: tunnel.id,
+                serverAddr: server.serverAddr,
+                serverPort: server.serverPort,
+                token: server.authToken ?? "",
+                serverName: tunnel.serverName,
+                secretKey: tunnel.secretKey,
+                bindPort: tunnel.bindPort
+            )
+            do {
+                try TunnelRuntime.shared.start(params)
+                _ = await TunnelRuntime.shared.awaitRunning(tunnelId, timeout: 20)
+            } catch {
+                // Probe will fail with a clearer SSH error; let it through.
+            }
         }
+
+        // Redirect SSH to the tunnel's local listener regardless of whether we just started it
+        // or it was already running — exec must dial 127.0.0.1:<bindPort>, not the raw host:port.
         var redirected = config
         redirected.host = "127.0.0.1"
         redirected.port = tunnel.bindPort
@@ -389,6 +446,8 @@ struct CredentialListView: View {
 
     @State private var credentials: [Credential] = []
     @State private var editingItem: Credential?
+    /// Id of the credential marked as default; new connections pre-select it.
+    @State private var defaultId: String? = AppDefaults.defaultCredentialId
 
     private let store = CredentialStore()
 
@@ -404,16 +463,25 @@ struct CredentialListView: View {
     private var content: some View {
         List {
             ForEach(credentials) { cred in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(cred.displayName)
-                        .font(.headline)
-                    Text(cred.authMethod == .password ? "密码" : "私钥")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(cred.displayName)
+                            .font(.headline)
+                        Text(cred.authMethod == .password ? "密码" : "私钥")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    if cred.id == defaultId {
+                        Label("默认", systemImage: "star.fill")
+                            .font(.caption)
+                            .foregroundColor(.yellow)
+                    }
                 }
                 .swipeActions(edge: .trailing) {
                     Button(role: .destructive) {
                         store.delete(id: cred.id)
+                        AppDefaults.clearCredentialDefault(id: cred.id)
                         load()
                     } label: {
                         Label("删除", systemImage: "trash")
@@ -424,6 +492,15 @@ struct CredentialListView: View {
                         Label("编辑", systemImage: "pencil")
                     }
                     .tint(.orange)
+                }
+                .swipeActions(edge: .leading) {
+                    Button {
+                        defaultId = cred.id
+                        AppDefaults.defaultCredentialId = cred.id
+                    } label: {
+                        Label("设为默认", systemImage: "star")
+                    }
+                    .tint(.yellow)
                 }
             }
         }
@@ -457,6 +534,7 @@ struct CredentialListView: View {
 
     private func load() {
         credentials = store.list()
+        defaultId = AppDefaults.defaultCredentialId
     }
 }
 
@@ -529,6 +607,8 @@ struct TunnelListView: View {
     @State private var tunnels: [FrpcTunnel] = []
     @State private var editingItem: FrpcTunnel?
     @State private var statusMap: [String: TunnelState] = [:]
+    /// Id of the tunnel marked as default; new connections pre-select it.
+    @State private var defaultId: String? = AppDefaults.defaultTunnelId
 
     private let tunnelStore = FrpcTunnelStore()
     private let serverStore = FrpsServerStore()
@@ -552,6 +632,7 @@ struct TunnelListView: View {
                 TunnelRowView(
                     tunnel: tunnel,
                     status: statusMap[tunnel.id, default: .stopped],
+                    isDefault: tunnel.id == defaultId,
                     serverStore: serverStore,
                     runtime: runtime
                 )
@@ -559,6 +640,7 @@ struct TunnelListView: View {
                     Button(role: .destructive) {
                         runtime.stop(tunnel.id)
                         tunnelStore.delete(id: tunnel.id)
+                        AppDefaults.clearTunnelDefault(id: tunnel.id)
                         load()
                     } label: {
                         Label("删除", systemImage: "trash")
@@ -569,6 +651,15 @@ struct TunnelListView: View {
                         Label("编辑", systemImage: "pencil")
                     }
                     .tint(.orange)
+                }
+                .swipeActions(edge: .leading) {
+                    Button {
+                        defaultId = tunnel.id
+                        AppDefaults.defaultTunnelId = tunnel.id
+                    } label: {
+                        Label("设为默认", systemImage: "star")
+                    }
+                    .tint(.yellow)
                 }
             }
         }
@@ -604,6 +695,7 @@ struct TunnelListView: View {
 
     private func load() {
         tunnels = tunnelStore.list()
+        defaultId = AppDefaults.defaultTunnelId
         refreshStatuses()
     }
 
@@ -621,6 +713,7 @@ struct TunnelListView: View {
 private struct TunnelRowView: View {
     let tunnel: FrpcTunnel
     let status: TunnelState
+    var isDefault: Bool = false
     let serverStore: FrpsServerStore
     let runtime: TunnelRuntime
 
@@ -638,6 +731,12 @@ private struct TunnelRowView: View {
             }
 
             Spacer()
+
+            if isDefault {
+                Label("默认", systemImage: "star.fill")
+                    .font(.caption)
+                    .foregroundColor(.yellow)
+            }
 
             // Status indicator
             HStack(spacing: 4) {

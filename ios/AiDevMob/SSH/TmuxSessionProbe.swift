@@ -38,6 +38,10 @@ enum TmuxSessionProbe {
     /// How to run the list command, in order of preference: a login shell (reads /etc/profile
     /// and ~/.profile), then an interactive one (reads ~/.bashrc / ~/.zshrc, where PATH tweaks
     /// usually live). `$SHELL` so a user whose tmux comes from a zsh/fish setup is covered too.
+    ///
+    /// NOTE: only `-lc` is tried at first. An frpc STCP visitor accepts a single concurrent
+    /// connection, so each shell flag is a fresh connect+close; if `-lc` works there's no need
+    /// to risk a second connection (and the re-dial race it brings).
     private static let shellFlags = ["-lc", "-ic"]
 
     enum ProbeError: LocalizedError {
@@ -66,8 +70,8 @@ enum TmuxSessionProbe {
                 if !sessions.isEmpty {
                     return sessions
                 }
-                // Empty stdout + no recognised "no server" → treat as empty list only when the
-                // command clearly succeeded; otherwise fall through to the next shell flag.
+                // Empty stdout, or output that says "no server running", means tmux is there
+                // but has no live sessions — that's a valid empty result, not a failure.
                 if looksLikeNoServer(stdout) || stdout.isEmpty {
                     return []
                 }
@@ -115,16 +119,31 @@ enum TmuxSessionProbe {
     }
 
     private static func parse(_ stdout: String) -> [TmuxSession] {
-        stdout
+        // PTY output uses \r\n (and sometimes bare \r) for line breaks; normalize all of them
+        // to \n so split(separator:"\n") actually separates lines instead of gluing them
+        // together via stray \r characters.
+        let normalized = stdout
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        return normalized
             .split(separator: "\n")
             .compactMap { line -> TmuxSession? in
-                let parts = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                let lineStr = String(line)
+                let trimmed = lineStr.trimmingCharacters(in: .whitespacesAndNewlines)
+                let parts = trimmed
                     .split(separator: Character(fieldSeparator), omittingEmptySubsequences: false)
                     .map(String.init)
                 guard parts.count >= 3, !parts[0].isEmpty else { return nil }
+                // Guard against the PTY echo of the command itself (which contains the tmux
+                // format string `#{session_name}|#{session_windows}|...`): a real session name
+                // won't contain `#`/`{`/`}`, and windows must parse as a positive int.
+                let name = parts[0]
+                guard !name.contains("#"), !name.contains("{"), !name.contains("}"),
+                      let windows = Int(parts[1].trimmingCharacters(in: .whitespaces)),
+                      windows > 0 else { return nil }
                 return TmuxSession(
-                    name: parts[0],
-                    windows: Int(parts[1]) ?? 0,
+                    name: name,
+                    windows: windows,
                     attached: parts[2] == "1"
                 )
             }
