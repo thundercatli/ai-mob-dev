@@ -128,9 +128,11 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate, UIGe
         super.viewDidLoad()
         view.backgroundColor = .black
 
+        applySettings()
         setupTopBar()
         setupExtraKeysBar()
         setupTerminalView()
+        installSwipeGestures()
 
         // Kill SwiftTerm's built-in TerminalAccessory (the default inputAccessoryView). We
         // render our own key row as a normal subview below; leaving the default would show two.
@@ -141,10 +143,66 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate, UIGe
         status = .connecting
     }
 
+    /// Applies terminal-relevant settings from SettingsStore: font size (via SwiftTerm's writable
+    /// `font` property), keep-screen-on (idle timer), and swipe-to-switch-windows (gesture enabled).
+    /// Mirrors Android's `TerminalActivity.onCreate` reading `AppSettings`.
+    private func applySettings() {
+        let fontSize = CGFloat(SettingsStore.shared.terminalFontSize)
+        // SwiftTerm's TerminalView.font setter rebuilds the renderer at the new size and
+        // recomputes rows/cols — same effect as Android's TerminalView.setTextSize.
+        terminalView.font = UIFont(name: "Menlo", size: fontSize) ?? .monospacedSystemFont(ofSize: fontSize, weight: .regular)
+
+        if SettingsStore.shared.keepScreenOn {
+            UIApplication.shared.isIdleTimerDisabled = true
+        }
+    }
+
+    /// Left/right swipe → tmux next/prev window, gated by the swipeSwitchesWindows setting and
+    /// only when a tmux session is configured. Mirrors Android's dispatchTouchEvent swipe handler.
+    private func installSwipeGestures() {
+        let swipeLeft = UISwipeGestureRecognizer(target: self, action: #selector(swipeNextWindow))
+        swipeLeft.direction = .left
+        swipeLeft.numberOfTouchesRequired = 1
+        terminalView.addGestureRecognizer(swipeLeft)
+
+        let swipeRight = UISwipeGestureRecognizer(target: self, action: #selector(swipePrevWindow))
+        swipeRight.direction = .right
+        swipeRight.numberOfTouchesRequired = 1
+        terminalView.addGestureRecognizer(swipeRight)
+    }
+
+    @objc private func swipeNextWindow() {
+        guard SettingsStore.shared.swipeSwitchesWindows,
+              config.tmuxSession.isNotBlank else { return }
+        sendTmuxKey("n")
+    }
+
+    @objc private func swipePrevWindow() {
+        guard SettingsStore.shared.swipeSwitchesWindows,
+              config.tmuxSession.isNotBlank else { return }
+        sendTmuxKey("p")
+    }
+
+    /// Sends a tmux prefix + key (e.g. prefix + "n" = next window). Reads the configured prefix
+    /// from SettingsStore, matching Android's `sendTmuxKey`.
+    private func sendTmuxKey(_ key: String) {
+        let prefix = SettingsStore.shared.tmuxPrefix
+        let control = UInt8(prefix.asciiValue! - Character("a").asciiValue! + 1)
+        sendBytes([control])
+        sendBytes(Array(key.utf8))
+    }
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         // Like Android's `requestFocus()`: opens the soft keyboard right away.
         terminalView.becomeFirstResponder()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        // Always re-enable the idle timer when leaving; applySettings may have disabled it.
+        UIApplication.shared.isIdleTimerDisabled = false
+        onDisconnect()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -311,9 +369,7 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate, UIGe
             cursor: { [weak self] finalByte in self?.sendCursorKey(finalByte: finalByte) },
             tmux: { [weak self] key in
                 guard let self else { return }
-                let control = UInt8(self.tmuxPrefix.asciiValue! - Character("a").asciiValue! + 1)
-                self.sendBytes([control])
-                self.sendBytes(Array(key.utf8))
+                self.sendTmuxKey(key)
             },
             hideKeyboard: { [weak self] in
                 // Dismiss the soft keyboard so the terminal fills more of the screen; tapping the
@@ -498,18 +554,6 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate, UIGe
     private func sendCursorKey(finalByte: UInt8) {
         let leader: UInt8 = terminalView.getTerminal().applicationCursor ? 0x4F : 0x5B // ESC O / ESC [
         sendBytes([0x1B, leader, finalByte])
-    }
-
-    /// The letter of tmux's prefix key (the "b" in Ctrl-B). Defaults to "b"; a future settings
-    /// screen can write `tmuxPrefix` into UserDefaults to change it (Android reads
-    /// `AppSettings.tmuxPrefix`).
-    private static let tmuxPrefixDefaultsKey = "tmuxPrefix"
-    private var tmuxPrefix: Character {
-        if let stored = UserDefaults.standard.string(forKey: Self.tmuxPrefixDefaultsKey)?.lowercased().first,
-           stored >= "a" && stored <= "z" {
-            return stored
-        }
-        return "b"
     }
 
     /// Ctrl transform for soft-keyboard input while the CTRL toggle is on, mirroring

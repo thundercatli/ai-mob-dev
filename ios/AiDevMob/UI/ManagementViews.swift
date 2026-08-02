@@ -65,6 +65,27 @@ struct ConnectionListView: View {
                     }
                     .tint(.orange)
                 }
+                .swipeActions(edge: .leading) {
+                    // Duplicate: opens the editor with a copy (empty id = new), name + "(副本)".
+                    Button {
+                        var copy = config
+                        copy = ConnectionConfig(
+                            id: "",
+                            name: config.displayName + "（副本）",
+                            host: config.host, port: config.port,
+                            credentialId: config.credentialId, username: config.username,
+                            authMethod: config.authMethod, password: config.password,
+                            privateKeyPem: config.privateKeyPem,
+                            privateKeyPassphrase: config.privateKeyPassphrase,
+                            tmuxSession: config.tmuxSession, defaultPath: config.defaultPath,
+                            tunnelId: config.tunnelId
+                        )
+                        editingItem = copy
+                    } label: {
+                        Label("复制", systemImage: "doc.on.doc")
+                    }
+                    .tint(.blue)
+                }
             }
         }
         .toolbar {
@@ -89,27 +110,50 @@ struct ConnectionListView: View {
         }
         .sheet(item: $editingItem) { config in
             NavigationStack {
-                ConnectionEditView(config: config, onSave: { saved in
-                    // A NEW connection (created with id "") needs a real id before storing.
-                    let toSave = saved.id.isEmpty
-                        ? ConnectionConfig(
-                            id: UUID().uuidString,
-                            name: saved.name, host: saved.host, port: saved.port,
-                            credentialId: saved.credentialId, username: saved.username,
-                            authMethod: saved.authMethod, password: saved.password,
-                            privateKeyPem: saved.privateKeyPem,
-                            privateKeyPassphrase: saved.privateKeyPassphrase,
-                            tmuxSession: saved.tmuxSession, defaultPath: saved.defaultPath,
-                            tunnelId: saved.tunnelId
-                        )
-                        : saved
-                    store.upsert(toSave)
-                    editingItem = nil
-                    load()
-                })
+                ConnectionEditView(
+                    config: config,
+                    onSave: { saved in persistAndClose(saved) },
+                    onSaveAndConnect: onConnect == nil ? nil : { saved in
+                        persistAndClose(saved)
+                        // Find the saved profile (now has a real id) and connect.
+                        if let stored = store.get(id: saved.id.isEmpty ? lastSavedId ?? "" : saved.id) {
+                            onConnect?(stored)
+                        } else {
+                            onConnect?(saved)
+                        }
+                    },
+                    onDelete: { toDelete in
+                        store.delete(id: toDelete.id)
+                        editingItem = nil
+                        load()
+                    }
+                )
             }
         }
         .onAppear(perform: load)
+    }
+
+    /// Persists a connection config (assigning a fresh UUID to new ones), then closes the editor.
+    /// Remembers the assigned id so "save and connect" can look it up.
+    @State private var lastSavedId: String?
+    private func persistAndClose(_ saved: ConnectionConfig) {
+        // A NEW connection (created with id "") needs a real id before storing.
+        let toSave = saved.id.isEmpty
+            ? ConnectionConfig(
+                id: UUID().uuidString,
+                name: saved.name, host: saved.host, port: saved.port,
+                credentialId: saved.credentialId, username: saved.username,
+                authMethod: saved.authMethod, password: saved.password,
+                privateKeyPem: saved.privateKeyPem,
+                privateKeyPassphrase: saved.privateKeyPassphrase,
+                tmuxSession: saved.tmuxSession, defaultPath: saved.defaultPath,
+                tunnelId: saved.tunnelId
+            )
+            : saved
+        store.upsert(toSave)
+        lastSavedId = toSave.id
+        editingItem = nil
+        load()
     }
 
     private func load() {
@@ -122,6 +166,10 @@ struct ConnectionListView: View {
 struct ConnectionEditView: View {
     @State var config: ConnectionConfig
     let onSave: (ConnectionConfig) -> Void
+    /// Optional: save then immediately open the terminal (Android's "Save and Connect").
+    var onSaveAndConnect: ((ConnectionConfig) -> Void)?
+    /// Optional: delete this connection from the editor (only when editing an existing one).
+    var onDelete: ((ConnectionConfig) -> Void)?
 
     @State private var credentials: [Credential] = []
     @State private var tunnels: [FrpcTunnel] = []
@@ -132,6 +180,7 @@ struct ConnectionEditView: View {
     @State private var tmuxProbeError: String?
     @State private var showingNewSessionPrompt = false
     @State private var newSessionName = ""
+    @State private var showingDeleteConfirm = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -219,8 +268,21 @@ struct ConnectionEditView: View {
         .navigationTitle(config.id.isEmpty ? "新建连接" : "编辑连接")
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("保存") {
-                    onSave(config)
+                Menu {
+                    Button {
+                        onSave(config)
+                    } label: {
+                        Label("保存", systemImage: "checkmark")
+                    }
+                    if onSaveAndConnect != nil {
+                        Button {
+                            onSaveAndConnect?(config)
+                        } label: {
+                            Label("保存并连接", systemImage: "arrow.forward.square")
+                        }
+                    }
+                } label: {
+                    Text("保存").fontWeight(.semibold)
                 }
             }
             ToolbarItem(placement: .cancellationAction) {
@@ -228,6 +290,23 @@ struct ConnectionEditView: View {
                     dismiss()
                 }
             }
+            // Delete: only when editing an existing connection (not a new one with empty id).
+            if !config.id.isEmpty, onDelete != nil {
+                ToolbarItem(placement: .destructiveAction) {
+                    Button(role: .destructive) {
+                        showingDeleteConfirm = true
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                }
+            }
+        }
+        .confirmationDialog("确定删除此连接？", isPresented: $showingDeleteConfirm, titleVisibility: .visible) {
+            Button("删除", role: .destructive) {
+                onDelete?(config)
+                dismiss()
+            }
+            Button("取消", role: .cancel) {}
         }
         .onAppear {
             credentials = CredentialStore().list()
@@ -1009,6 +1088,11 @@ struct MainTabView: View {
             ServerListView()
                 .tabItem {
                     Label("服务器", systemImage: "server.rack")
+                }
+
+            SettingsView()
+                .tabItem {
+                    Label("设置", systemImage: "gearshape")
                 }
         }
     }

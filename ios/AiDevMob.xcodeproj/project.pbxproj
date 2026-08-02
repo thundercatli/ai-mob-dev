@@ -10,6 +10,7 @@
 		04C3F1A81A54AEB652418001 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 57237E890388B0D215283F4E /* SwiftTerm */; };
 		04C9947C4D66EC2E9873FCF2 /* TerminalViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC9D74CA98935B9D5EC2FFA7 /* TerminalViewController.swift */; };
 		32F16E7DB95D645E02C9ABFC /* Frpclib.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3EE88F2F1A6AED2678A0028F /* Frpclib.xcframework */; };
+		67205BD221C739A91478203F /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7714D092F0B258EB14A1ABB2 /* SettingsStore.swift */; };
 		6975DB391FFAF20A0F972F44 /* TunnelRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = B68C2170BE25154727EA0B52 /* TunnelRuntime.swift */; };
 		6AD0131A50EB7ADBD7EBADDF /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6CB37BF73108BD8EDDD68B8 /* Models.swift */; };
 		7106DEA41B1037378A895603 /* SshTerminalConnector.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0E3150D3BD13E0786DE17C8 /* SshTerminalConnector.swift */; };
@@ -20,6 +21,7 @@
 		B0C50DE524AC185006F2E348 /* TerminalHostingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A02A91751560BF5DD7FF1BD /* TerminalHostingView.swift */; };
 		C45942EA88858EC644B7C243 /* Stores.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2333F90E491FB82C4347C682 /* Stores.swift */; };
 		CAFDD574E6CFB5C13C019704 /* AppDefaults.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3443C72B325DC93CB3C999AE /* AppDefaults.swift */; };
+		E20B219F36D2A4E40C869D09 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A6B5EEA1F6BD112F298705 /* SettingsView.swift */; };
 		E9B55D9610AB507DD6AA64C1 /* AppRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A0DADD2F55F5A890061D986 /* AppRoot.swift */; };
 		FF2BA1C0A72A43C57A9F765F /* ManagementViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 486DBAD8A3C66F998D857578 /* ManagementViews.swift */; };
 		FFC2DF8867F082BF6A7A2C5B /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = 54407C469D02638D62628DA2 /* Citadel */; };
@@ -48,7 +50,9 @@
 		486DBAD8A3C66F998D857578 /* ManagementViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagementViews.swift; sourceTree = "<group>"; };
 		6A0DADD2F55F5A890061D986 /* AppRoot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRoot.swift; sourceTree = "<group>"; };
 		705D116AA14238990FACAE0E /* TmuxSessionProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TmuxSessionProbe.swift; sourceTree = "<group>"; };
+		7714D092F0B258EB14A1ABB2 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
 		7F398F5010724F6E877105EA /* AiDevMob.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AiDevMob.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1A6B5EEA1F6BD112F298705 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		B68C2170BE25154727EA0B52 /* TunnelRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelRuntime.swift; sourceTree = "<group>"; };
 		BC9D74CA98935B9D5EC2FFA7 /* TerminalViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalViewController.swift; sourceTree = "<group>"; };
 		C0E3150D3BD13E0786DE17C8 /* SshTerminalConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SshTerminalConnector.swift; sourceTree = "<group>"; };
@@ -79,11 +83,20 @@
 			path = Storage;
 			sourceTree = "<group>";
 		};
+		0F9C62BADFAF3A537EC4EA3A /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				7714D092F0B258EB14A1ABB2 /* SettingsStore.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
 		271AA12822D978AE8B5E0117 /* UI */ = {
 			isa = PBXGroup;
 			children = (
 				486DBAD8A3C66F998D857578 /* ManagementViews.swift */,
 				FB3ED222DEF0DBC6348797C8 /* RootView.swift */,
+				A1A6B5EEA1F6BD112F298705 /* SettingsView.swift */,
 				1A02A91751560BF5DD7FF1BD /* TerminalHostingView.swift */,
 				BC9D74CA98935B9D5EC2FFA7 /* TerminalViewController.swift */,
 			);
@@ -113,6 +126,7 @@
 			children = (
 				E4EFFCC6431A16F208633806 /* Frpc */,
 				84E7CDC24C5EF9248B13BCDE /* Models */,
+				0F9C62BADFAF3A537EC4EA3A /* Settings */,
 				49B3A5DDE7617E8D586A8E44 /* SSH */,
 				0D1BCCB750D9D3A28D1D11AB /* Storage */,
 				271AA12822D978AE8B5E0117 /* UI */,
@@ -226,6 +240,8 @@
 				FF2BA1C0A72A43C57A9F765F /* ManagementViews.swift in Sources */,
 				6AD0131A50EB7ADBD7EBADDF /* Models.swift in Sources */,
 				8EE424701D43D098610F616E /* RootView.swift in Sources */,
+				67205BD221C739A91478203F /* SettingsStore.swift in Sources */,
+				E20B219F36D2A4E40C869D09 /* SettingsView.swift in Sources */,
 				7106DEA41B1037378A895603 /* SshTerminalConnector.swift in Sources */,
 				C45942EA88858EC644B7C243 /* Stores.swift in Sources */,
 				B0C50DE524AC185006F2E348 /* TerminalHostingView.swift in Sources */,
@@ -274,7 +290,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = VZMD6TG275;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_BITCODE = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -396,7 +412,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = VZMD6TG275;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_BITCODE = NO;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

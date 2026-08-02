@@ -63,12 +63,13 @@ struct IPadShell: View {
     }
 }
 
-/// Top-level management categories shown in the sidebar. Mirrors the four iPhone tabs.
+/// Top-level management categories shown in the sidebar. Mirrors the iPhone tabs.
 enum ManagementCategory: String, CaseIterable, Identifiable {
     case connections
     case credentials
     case tunnels
     case servers
+    case settings
 
     var id: String { rawValue }
 
@@ -78,6 +79,7 @@ enum ManagementCategory: String, CaseIterable, Identifiable {
         case .credentials:  return "凭证"
         case .tunnels:      return "隧道"
         case .servers:      return "服务器"
+        case .settings:     return "设置"
         }
     }
 
@@ -87,6 +89,7 @@ enum ManagementCategory: String, CaseIterable, Identifiable {
         case .credentials:  return "key"
         case .tunnels:      return "network"
         case .servers:      return "server.rack"
+        case .settings:     return "gearshape"
         }
     }
 }
@@ -130,6 +133,8 @@ struct SidebarView: View {
             TunnelListView(embeddedInSplit: true)
         case .servers:
             ServerListView(embeddedInSplit: true)
+        case .settings:
+            SettingsView(embeddedInSplit: true)
         }
     }
 }
