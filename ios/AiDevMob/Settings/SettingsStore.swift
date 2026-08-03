@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 /// App-wide user preferences, the iOS counterpart of Android's `AppSettings`.
 ///
@@ -9,7 +10,7 @@ import Foundation
 ///
 /// Mirrors Android's `AppSettings` field-for-field: `terminalFontSize`, `keepScreenOn`,
 /// `tmuxPrefix`, `swipeSwitchesWindows`, plus `previewTheme` (reserved for the file browser).
-final class SettingsStore {
+final class SettingsStore: ObservableObject {
 
     static let shared = SettingsStore()
 
@@ -42,14 +43,20 @@ final class SettingsStore {
             let raw = defaults.integer(forKey: Key.terminalFontSize)
             return raw == 0 ? Self.defaultFontSize : raw.clamped(to: Self.minFontSize...Self.maxFontSize)
         }
-        set { defaults.set(newValue.clamped(to: Self.minFontSize...Self.maxFontSize), forKey: Key.terminalFontSize) }
+        set {
+            defaults.set(newValue.clamped(to: Self.minFontSize...Self.maxFontSize), forKey: Key.terminalFontSize)
+            objectWillChange.send()
+        }
     }
 
     // MARK: - Keep screen on
 
     var keepScreenOn: Bool {
         get { defaults.bool(forKey: Key.keepScreenOn) }
-        set { defaults.set(newValue, forKey: Key.keepScreenOn) }
+        set {
+            defaults.set(newValue, forKey: Key.keepScreenOn)
+            objectWillChange.send()
+        }
     }
 
     // MARK: - tmux prefix key
@@ -67,6 +74,7 @@ final class SettingsStore {
         set {
             guard newValue >= "a" && newValue <= "z" else { return }
             defaults.set(String(newValue).lowercased(), forKey: Key.tmuxPrefix)
+            objectWillChange.send()
         }
     }
 
@@ -79,7 +87,10 @@ final class SettingsStore {
             if defaults.object(forKey: Key.swipeSwitchesWindows) == nil { return true }
             return defaults.bool(forKey: Key.swipeSwitchesWindows)
         }
-        set { defaults.set(newValue, forKey: Key.swipeSwitchesWindows) }
+        set {
+            defaults.set(newValue, forKey: Key.swipeSwitchesWindows)
+            objectWillChange.send()
+        }
     }
 
     // MARK: - Preview theme (reserved for the file browser)
@@ -94,7 +105,10 @@ final class SettingsStore {
         get {
             PreviewTheme(rawValue: defaults.string(forKey: Key.previewTheme) ?? "") ?? .system
         }
-        set { defaults.set(newValue.rawValue, forKey: Key.previewTheme) }
+        set {
+            defaults.set(newValue.rawValue, forKey: Key.previewTheme)
+            objectWillChange.send()
+        }
     }
 }
 

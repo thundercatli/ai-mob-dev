@@ -67,6 +67,9 @@ final class TunnelRuntime {
         self.runtime = FrpcllibNewRuntime()
     }
 
+    /// Whether the embedded gomobile framework linked and its Go runtime initialized.
+    var isAvailable: Bool { runtime != nil }
+
     /// Starts an STCP visitor in its own goroutine and returns once the request is accepted
     /// (NOT once it is up — poll `status(id:)` for `.running`). Throws on a binding-level
     /// failure (bad params, port already bound by a non-tracked process). Re-calling with an

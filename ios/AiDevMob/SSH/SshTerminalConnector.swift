@@ -505,6 +505,27 @@ final class SshTerminalConnector {
         try? await client?.close()
     }
 
+    /// Opens an SFTP subsystem on this connector's existing SSH transport. This is important for
+    /// STCP visitors, which commonly allow only one TCP connection at a time: the file browser can
+    /// coexist with the terminal without dialing a second connection through the same visitor.
+    func openSftpSession() async throws -> SftpSession {
+        // The terminal UI can expose Files while SSH is still connecting. Give the established
+        // client a short window to appear instead of failing a tap made during that transition.
+        for _ in 0..<100 {
+            lock.lock()
+            let client = self.client
+            let disconnected = hasNotifiedDisconnect
+            lock.unlock()
+
+            if let client, !disconnected {
+                return try await SftpSession.attach(to: client)
+            }
+            if disconnected { break }
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        throw SftpSessionError.notConnected
+    }
+
     // MARK: - Private
 
     private func lockedOutbound() -> TTYStdinWriter? {
@@ -536,7 +557,7 @@ final class SshTerminalConnector {
 
     // MARK: - Static helpers
 
-    private static func makeAuthenticationMethod(from config: ConnectionConfig) throws -> SSHAuthenticationMethod {
+    static func makeAuthenticationMethod(from config: ConnectionConfig) throws -> SSHAuthenticationMethod {
         switch config.authMethod {
         case .password:
             return .passwordBased(username: config.username, password: config.password ?? "")

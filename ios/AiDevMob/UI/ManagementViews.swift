@@ -4,6 +4,7 @@ import SwiftUI
 
 struct ConnectionListView: View {
     let onConnect: (ConnectionConfig) -> Void
+    let onBrowseFiles: (ConnectionConfig) -> Void
     /// When embedded in the iPad sidebar, the sidebar already owns a NavigationStack, so this
     /// view skips its own outer NavigationStack (and its navigationTitle, which the sidebar
     /// sets). Defaults to false so iPhone behaviour is unchanged.
@@ -26,30 +27,44 @@ struct ConnectionListView: View {
     private var content: some View {
         List {
             ForEach(connections) { config in
-                Button {
-                    onConnect(config)
-                } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(config.displayName)
-                            .foregroundColor(.primary)
-                            .font(.headline)
-                        HStack(spacing: 4) {
-                            // Show "host:port" only when host is non-empty; a bare port number
-                            // with no host is meaningless to the user.
-                            if !config.host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                Text("\(config.host):\(config.port)")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            if !config.tmuxSession.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                Text("·")
-                                    .foregroundColor(.secondary)
-                                Text("tmux")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
+                HStack(spacing: 8) {
+                    Button {
+                        onConnect(config)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(config.displayName)
+                                .foregroundColor(.primary)
+                                .font(.headline)
+                            HStack(spacing: 4) {
+                                // Show "host:port" only when host is non-empty; a bare port number
+                                // with no host is meaningless to the user.
+                                if !config.host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                    Text("\(config.host):\(config.port)")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                if !config.tmuxSession.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                    Text("·")
+                                        .foregroundColor(.secondary)
+                                    Text("tmux")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
                             }
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        onBrowseFiles(config)
+                    } label: {
+                        Image(systemName: "folder")
+                            .frame(width: 32, height: 32)
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("浏览 \(config.displayName) 的文件")
                 }
                 .swipeActions(edge: .trailing) {
                     Button(role: .destructive) {
@@ -106,6 +121,7 @@ struct ConnectionListView: View {
                 } label: {
                     Image(systemName: "plus")
                 }
+                .accessibilityLabel("新建连接")
             }
         }
         .sheet(item: $editingItem) { config in
@@ -113,13 +129,13 @@ struct ConnectionListView: View {
                 ConnectionEditView(
                     config: config,
                     onSave: { saved in persistAndClose(saved) },
-                    onSaveAndConnect: onConnect == nil ? nil : { saved in
+                    onSaveAndConnect: { saved in
                         persistAndClose(saved)
                         // Find the saved profile (now has a real id) and connect.
                         if let stored = store.get(id: saved.id.isEmpty ? lastSavedId ?? "" : saved.id) {
-                            onConnect?(stored)
+                            onConnect(stored)
                         } else {
-                            onConnect?(saved)
+                            onConnect(saved)
                         }
                     },
                     onDelete: { toDelete in
@@ -163,6 +179,20 @@ struct ConnectionListView: View {
 
 // MARK: - ConnectionEditView
 
+private enum ConnectionEditSheet: Identifiable {
+    case credential(Credential)
+    case tmux(TmuxSessionList)
+
+    var id: String {
+        switch self {
+        case .credential:
+            return "credential"
+        case .tmux:
+            return "tmux"
+        }
+    }
+}
+
 struct ConnectionEditView: View {
     @State var config: ConnectionConfig
     let onSave: (ConnectionConfig) -> Void
@@ -173,10 +203,10 @@ struct ConnectionEditView: View {
 
     @State private var credentials: [Credential] = []
     @State private var tunnels: [FrpcTunnel] = []
+    @State private var activeSheet: ConnectionEditSheet?
     /// tmux-probe state: loading flag, the sessions found (when probing succeeds), and an
     /// error message (when it fails). Mirrors Android's `probing` + `showTmuxSessionPicker`.
     @State private var tmuxProbing = false
-    @State private var tmuxSessions: TmuxSessionList?
     @State private var tmuxProbeError: String?
     @State private var showingNewSessionPrompt = false
     @State private var newSessionName = ""
@@ -198,6 +228,34 @@ struct ConnectionEditView: View {
                     ForEach(credentials) { cred in
                         Text(cred.displayName).tag(cred.id as String?)
                     }
+                }
+                HStack(spacing: 12) {
+                    Button {
+                        activeSheet = .credential(Credential(
+                            id: "",
+                            name: "",
+                            username: "",
+                            authMethod: .password,
+                            password: nil,
+                            privateKeyPem: nil,
+                            privateKeyPassphrase: nil
+                        ))
+                    } label: {
+                        Label("新建凭证", systemImage: "plus")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderless)
+
+                    Button {
+                        if let selectedCredential {
+                            activeSheet = .credential(selectedCredential)
+                        }
+                    } label: {
+                        Label("编辑凭证", systemImage: "pencil")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(selectedCredential == nil)
                 }
                 if config.credentialId == nil {
                     TextField("用户名", text: $config.username)
@@ -308,8 +366,11 @@ struct ConnectionEditView: View {
             }
             Button("取消", role: .cancel) {}
         }
+        .onChange(of: config.credentialId) {
+            applySelectedCredential()
+        }
         .onAppear {
-            credentials = CredentialStore().list()
+            reloadCredentials()
             tunnels = FrpcTunnelStore().list()
             // Pre-fill the default credential + tunnel on a NEW connection (empty id), so the
             // user doesn't have to pick the same ones every time. They can still override.
@@ -323,16 +384,26 @@ struct ConnectionEditView: View {
                     config.tunnelId = id
                 }
             }
+            applySelectedCredential()
         }
-        .sheet(item: $tmuxSessions) { list in
-            TmuxSessionPicker(
-                sessions: list.sessions,
-                onSelect: { name in
-                    config.tmuxSession = name
-                    tmuxSessions = nil
-                },
-                onCancel: { tmuxSessions = nil }
-            )
+        .sheet(item: $activeSheet) { sheet in
+            switch sheet {
+            case .credential(let credential):
+                NavigationStack {
+                    CredentialEditView(credential: credential) { saved in
+                        persistCredential(saved)
+                    }
+                }
+            case .tmux(let list):
+                TmuxSessionPicker(
+                    sessions: list.sessions,
+                    onSelect: { name in
+                        config.tmuxSession = name
+                        activeSheet = nil
+                    },
+                    onCancel: { activeSheet = nil }
+                )
+            }
         }
         .alert("新建 tmux 会话", isPresented: $showingNewSessionPrompt) {
             TextField("会话名", text: $newSessionName)
@@ -346,6 +417,43 @@ struct ConnectionEditView: View {
             }
             Button("取消", role: .cancel) { newSessionName = "" }
         }
+    }
+
+    private var selectedCredential: Credential? {
+        guard let id = config.credentialId else { return nil }
+        return credentials.first { $0.id == id }
+    }
+
+    private func reloadCredentials() {
+        credentials = CredentialStore().list()
+    }
+
+    private func applySelectedCredential() {
+        guard let credential = selectedCredential else { return }
+        config.username = credential.username
+        config.authMethod = credential.authMethod
+        config.password = nil
+        config.privateKeyPem = nil
+        config.privateKeyPassphrase = nil
+    }
+
+    private func persistCredential(_ credential: Credential) {
+        let saved = credential.id.isEmpty
+            ? Credential(
+                id: UUID().uuidString,
+                name: credential.name,
+                username: credential.username,
+                authMethod: credential.authMethod,
+                password: credential.password,
+                privateKeyPem: credential.privateKeyPem,
+                privateKeyPassphrase: credential.privateKeyPassphrase
+            )
+            : credential
+        CredentialStore().upsert(saved)
+        reloadCredentials()
+        config.credentialId = saved.id
+        applySelectedCredential()
+        activeSheet = nil
     }
 
     // MARK: - tmux probe
@@ -391,7 +499,7 @@ struct ConnectionEditView: View {
                     if sessions.isEmpty {
                         tmuxProbeError = "远端没有运行中的 tmux 会话。"
                     } else {
-                        tmuxSessions = TmuxSessionList(sessions: sessions)
+                        activeSheet = .tmux(TmuxSessionList(sessions: sessions))
                     }
                 }
             } catch {
@@ -1067,10 +1175,11 @@ struct ServerEditView: View {
 
 struct MainTabView: View {
     let onConnect: (ConnectionConfig) -> Void
+    let onBrowseFiles: (ConnectionConfig) -> Void
 
     var body: some View {
         TabView {
-            ConnectionListView(onConnect: onConnect)
+            ConnectionListView(onConnect: onConnect, onBrowseFiles: onBrowseFiles)
                 .tabItem {
                     Label("连接", systemImage: "terminal")
                 }

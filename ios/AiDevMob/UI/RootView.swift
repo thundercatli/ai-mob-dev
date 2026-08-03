@@ -34,32 +34,69 @@ struct CompactShell: View {
     @ObservedObject var coordinator: AppCoordinator
 
     var body: some View {
-        MainTabView(onConnect: { config in coordinator.connect(config) })
-            .fullScreenCover(item: $coordinator.activeTerminal) { host in
-                TerminalHostingView(vc: host.vc)
-                    // A cover ignores safe areas by default; the terminal VC manages its own
-                    // top bar + safe-area insets, so let it own the full screen.
-                    .ignoresSafeArea()
-            }
+        MainTabView(
+            onConnect: { config in coordinator.connect(config) },
+            onBrowseFiles: { config in coordinator.browseFiles(config) }
+        )
+        .fullScreenCover(item: $coordinator.activeTerminal) { host in
+            TerminalHostingView(vc: host.vc)
+                // A cover ignores safe areas by default; the terminal VC manages its own
+                // top bar + safe-area insets, so let it own the full screen.
+                .ignoresSafeArea()
+        }
+        .sheet(item: $coordinator.activeFileBrowser) { host in
+            FileBrowserView(host: host)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
     }
 }
 
 // MARK: - iPad (regular)
 
-/// Two-column `NavigationSplitView`: a persistent sidebar (category menu → list) on the left and
-/// the terminal (or a placeholder) in the detail column on the right. Opening a connection fills
-/// the detail column WITHOUT dismissing the sidebar, so the user can switch connections or edit
-/// tunnels while a terminal stays live.
+/// Two-column `NavigationSplitView`: a sidebar (category menu → list) on the left and the terminal
+/// (or a placeholder) in the detail column on the right. Opening a connection automatically
+/// collapses the sidebar so the terminal gets the full display; the system sidebar control still
+/// lets the user reopen it while the terminal stays live.
 struct IPadShell: View {
     @ObservedObject var coordinator: AppCoordinator
+    @State private var columnVisibility: NavigationSplitViewVisibility
+
+    init(coordinator: AppCoordinator) {
+        self.coordinator = coordinator
+        _columnVisibility = State(
+            initialValue: Self.preferredColumnVisibility(
+                hasActiveTerminal: coordinator.activeTerminal != nil
+            )
+        )
+    }
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView(coordinator: coordinator)
         } detail: {
             DetailColumn(coordinator: coordinator)
         }
         .navigationSplitViewStyle(.balanced)
+        .onChange(of: coordinator.activeTerminal?.id) {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                columnVisibility = Self.preferredColumnVisibility(
+                    hasActiveTerminal: coordinator.activeTerminal != nil
+                )
+            }
+        }
+        .sheet(item: $coordinator.activeFileBrowser) { host in
+            FileBrowserView(host: host)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationContentInteraction(.resizes)
+        }
+    }
+
+    static func preferredColumnVisibility(
+        hasActiveTerminal: Bool
+    ) -> NavigationSplitViewVisibility {
+        hasActiveTerminal ? .detailOnly : .all
     }
 }
 
@@ -126,7 +163,11 @@ struct SidebarView: View {
         switch cat {
         case .connections:
             // ConnectionListView drives the detail column via coordinator.connect.
-            ConnectionListView(onConnect: { config in coordinator.connect(config) }, embeddedInSplit: true)
+            ConnectionListView(
+                onConnect: { config in coordinator.connect(config) },
+                onBrowseFiles: { config in coordinator.browseFiles(config) },
+                embeddedInSplit: true
+            )
         case .credentials:
             CredentialListView(embeddedInSplit: true)
         case .tunnels:

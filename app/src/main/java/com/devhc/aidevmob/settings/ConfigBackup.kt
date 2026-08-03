@@ -150,6 +150,9 @@ object ConfigBackup {
             put("terminalFontSize", settings.terminalFontSize)
             put("keepScreenOn", settings.keepScreenOn)
             put("updateToken", settings.updateToken ?: JSONObject.NULL)
+            put("tmuxPrefix", settings.tmuxPrefix.toString())
+            put("swipeSwitchesWindows", settings.swipeSwitchesWindows)
+            put("previewTheme", settings.previewTheme)
         })
     }
 
@@ -232,6 +235,9 @@ object ConfigBackup {
             settings.terminalFontSize = settingsJson.optInt("terminalFontSize", AppSettings.DEFAULT_FONT_SIZE)
             settings.keepScreenOn = settingsJson.optBoolean("keepScreenOn", false)
             settingsJson.optStringOrNull("updateToken")?.let { settings.updateToken = it }
+            settingsJson.optString("tmuxPrefix").firstOrNull()?.let { settings.tmuxPrefix = it }
+            settings.swipeSwitchesWindows = settingsJson.optBoolean("swipeSwitchesWindows", true)
+            settings.previewTheme = settingsJson.optString("previewTheme", "SYSTEM")
         }
 
         return Restored(

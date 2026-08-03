@@ -21,6 +21,34 @@ struct TerminalHost: Identifiable {
     let config: ConnectionConfig
 }
 
+/// One presented file browser. Its session provider is resolved lazily when the sheet appears so
+/// it can reuse a terminal SSH transport that may still be finishing its connection handshake.
+struct FileBrowserHost: Identifiable {
+    let id = UUID()
+    let config: ConnectionConfig
+    let sessionProvider: () async throws -> SftpSession
+}
+
+enum FileBrowserConnectionError: LocalizedError {
+    case coordinatorUnavailable
+    case missingUsername
+    case missingTunnel
+    case missingServer
+    case tunnelInUse
+    case tunnelFailed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .coordinatorUnavailable: return "应用连接状态已失效，请关闭后重试。"
+        case .missingUsername: return "用户名不能为空，请检查凭证配置。"
+        case .missingTunnel: return "关联的隧道配置不存在或被删除。"
+        case .missingServer: return "隧道指向的 frps 服务器配置不存在。"
+        case .tunnelInUse: return "该隧道正被另一个终端连接占用，请先关闭该终端。"
+        case .tunnelFailed(let message): return "隧道启动失败：\(message)"
+        }
+    }
+}
+
 /// Title/message pair for the global error alert. Struct (not tuple) so it conforms to
 /// `Identifiable` for `.alert(item:)`.
 struct ErrorMessage: Identifiable {
@@ -54,6 +82,10 @@ final class AppCoordinator: ObservableObject {
     /// The currently-active terminal, or nil when none is shown. Setting this is what makes the
     /// terminal appear/disappear on screen — full-screen cover on iPhone, detail column on iPad.
     @Published var activeTerminal: TerminalHost?
+
+    /// File browsing is a sheet on both phone and tablet. On iPad this keeps the terminal detail
+    /// mounted and alive behind the sheet instead of replacing its UIViewController.
+    @Published var activeFileBrowser: FileBrowserHost?
 
     /// Global error alert. RootView binds `.alert(item:)` to this.
     @Published var errorMessage: ErrorMessage?
@@ -140,6 +172,16 @@ final class AppCoordinator: ObservableObject {
         }
     }
 
+    /// Opens the remote filesystem for a profile. When this profile already owns the live
+    /// terminal, its SSH transport is reused; otherwise the browser prepares the tunnel and opens
+    /// one standalone SSH/SFTP connection for its lifetime.
+    func browseFiles(_ config: ConnectionConfig) {
+        activeFileBrowser = FileBrowserHost(config: config) { [weak self] in
+            guard let self else { throw FileBrowserConnectionError.coordinatorUnavailable }
+            return try await self.makeSftpSession(for: config)
+        }
+    }
+
     /// When `config` references a tunnel, rewrites host/port to the tunnel's local listener
     /// (`127.0.0.1:<bindPort>`) so SSH dials the frpc visitor, not the config's port. Returns
     /// the config unchanged when no tunnel is set (direct connection).
@@ -153,6 +195,63 @@ final class AppCoordinator: ObservableObject {
         redirected.host = "127.0.0.1"
         redirected.port = tunnel.bindPort
         return redirected
+    }
+
+    private func makeSftpSession(for config: ConnectionConfig) async throws -> SftpSession {
+        // If this exact profile has an active terminal, wait for its SSH client and add an SFTP
+        // subsystem to it. This avoids a second TCP connection through a single-slot STCP visitor.
+        if activeTerminal?.config.id == config.id {
+            for _ in 0..<200 {
+                if let connector {
+                    return try await connector.openSftpSession()
+                }
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+            throw SftpSessionError.notConnected
+        }
+
+        // A different live profile cannot safely open another SSH connection through the same
+        // STCP visitor. Direct connections and profiles on different tunnels remain independent.
+        if let active = activeTerminal,
+           let tunnelId = config.tunnelId,
+           active.config.tunnelId == tunnelId {
+            throw FileBrowserConnectionError.tunnelInUse
+        }
+
+        let prepared = try await Self.prepareFileBrowserConnection(config)
+        return try await SftpSession.open(config: prepared)
+    }
+
+    private static func prepareFileBrowserConnection(_ config: ConnectionConfig) async throws -> ConnectionConfig {
+        let resolved = CredentialStore().resolve(config)
+        guard !resolved.username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw FileBrowserConnectionError.missingUsername
+        }
+        guard let tunnelId = resolved.tunnelId else { return resolved }
+        guard let tunnel = FrpcTunnelStore().get(id: tunnelId) else {
+            throw FileBrowserConnectionError.missingTunnel
+        }
+
+        if !TunnelRuntime.shared.isRunning(tunnelId) {
+            guard let server = FrpsServerStore().get(id: tunnel.serverId) else {
+                throw FileBrowserConnectionError.missingServer
+            }
+            try TunnelRuntime.shared.start(VisitorParams(
+                id: tunnel.id,
+                serverAddr: server.serverAddr,
+                serverPort: server.serverPort,
+                token: server.authToken ?? "",
+                serverName: tunnel.serverName,
+                secretKey: tunnel.secretKey,
+                bindPort: tunnel.bindPort
+            ))
+            let state = await TunnelRuntime.shared.awaitRunning(tunnelId, timeout: 20)
+            guard state == .running else {
+                let message = TunnelRuntime.shared.lastError(tunnelId)
+                throw FileBrowserConnectionError.tunnelFailed(message.isEmpty ? "超时" : message)
+            }
+        }
+        return redirectedThroughTunnel(resolved)
     }
 
     /// Reconnect with exponential backoff, mirroring Android's reconnect loop (max 5 attempts).
@@ -239,6 +338,10 @@ final class AppCoordinator: ObservableObject {
             if let config = self.activeTerminal?.config {
                 self.reconnect(config)
             }
+        }
+
+        vc.onBrowseFiles = { [weak self] in
+            self?.browseFiles(config)
         }
 
         vc.onDisconnect = { [weak self] in

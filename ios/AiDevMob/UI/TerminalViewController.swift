@@ -30,6 +30,10 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate, UIGe
     /// Called when the user taps the status to force a reconnect.
     var onReconnect: () -> Void = {}
 
+    /// Opens the SFTP browser for this terminal's profile. The coordinator reuses this terminal's
+    /// SSH transport so the PTY stays alive while the file sheet is visible.
+    var onBrowseFiles: () -> Void = {}
+
     /// Called when this screen is going away so the caller can tear down the SSH channel.
     /// Never blocks the main thread here — the caller handles that asynchronously, exactly
     /// like Android's `disconnectInBackground()`.
@@ -84,6 +88,8 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate, UIGe
 
     private let topBar = UIView()
     private let backButton = UIButton(type: .system)
+    private let filesButton = UIButton(type: .system)
+    private let moreButton = UIButton(type: .system)
     private let titleLabel = UILabel()
     private let statusDot = UIView()
     private let statusText = UILabel()
@@ -205,11 +211,6 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate, UIGe
         onDisconnect()
     }
 
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-        onDisconnect()
-    }
-
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         // Once the safe-area insets are known, grow the bar so its black fill reaches under the
@@ -276,6 +277,21 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate, UIGe
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         topBar.addSubview(titleLabel)
 
+        filesButton.setImage(UIImage(systemName: "folder", withConfiguration: symbolConfig), for: .normal)
+        filesButton.tintColor = .white
+        filesButton.translatesAutoresizingMaskIntoConstraints = false
+        filesButton.accessibilityLabel = "浏览文件"
+        filesButton.addTarget(self, action: #selector(filesTapped), for: .touchUpInside)
+        topBar.addSubview(filesButton)
+
+        moreButton.setImage(UIImage(systemName: "ellipsis.circle", withConfiguration: symbolConfig), for: .normal)
+        moreButton.tintColor = .white
+        moreButton.translatesAutoresizingMaskIntoConstraints = false
+        moreButton.accessibilityLabel = "更多操作"
+        moreButton.showsMenuAsPrimaryAction = true
+        moreButton.menu = makeActionsMenu()
+        topBar.addSubview(moreButton)
+
         statusDot.layer.cornerRadius = 4
         statusDot.translatesAutoresizingMaskIntoConstraints = false
         topBar.addSubview(statusDot)
@@ -298,7 +314,17 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate, UIGe
             titleLabel.leadingAnchor.constraint(equalTo: backButton.trailingAnchor, constant: 0),
             titleLabel.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
 
-            statusText.trailingAnchor.constraint(equalTo: topBar.trailingAnchor, constant: -10),
+            moreButton.trailingAnchor.constraint(equalTo: topBar.trailingAnchor, constant: -2),
+            moreButton.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
+            moreButton.widthAnchor.constraint(equalToConstant: 36),
+            moreButton.heightAnchor.constraint(equalToConstant: 36),
+
+            filesButton.trailingAnchor.constraint(equalTo: moreButton.leadingAnchor),
+            filesButton.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
+            filesButton.widthAnchor.constraint(equalToConstant: 36),
+            filesButton.heightAnchor.constraint(equalToConstant: 36),
+
+            statusText.trailingAnchor.constraint(equalTo: filesButton.leadingAnchor, constant: -6),
             statusText.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
 
             statusDot.trailingAnchor.constraint(equalTo: statusText.leadingAnchor, constant: -5),
@@ -311,9 +337,10 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate, UIGe
         ])
 
         // Tap the status pill to force a reconnect (mirrors Android's tappable status banner).
-        let tap = UITapGestureRecognizer(target: self, action: #selector(statusTapped))
-        statusDot.addGestureRecognizer(tap)
-        statusText.addGestureRecognizer(tap)
+        statusDot.isUserInteractionEnabled = true
+        statusText.isUserInteractionEnabled = true
+        statusDot.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(statusTapped)))
+        statusText.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(statusTapped)))
     }
 
     @objc private func backTapped() {
@@ -324,6 +351,54 @@ final class TerminalViewController: UIViewController, TerminalViewDelegate, UIGe
 
     @objc private func statusTapped() {
         onReconnect()
+    }
+
+    @objc private func filesTapped() {
+        _ = terminalView.resignFirstResponder()
+        onBrowseFiles()
+    }
+
+    private func makeActionsMenu() -> UIMenu {
+        let keyboard = UIAction(title: "显示键盘", image: UIImage(systemName: "keyboard")) { [weak self] _ in
+            _ = self?.terminalView.becomeFirstResponder()
+        }
+        let files = UIAction(title: "浏览文件", image: UIImage(systemName: "folder")) { [weak self] _ in
+            self?.filesTapped()
+        }
+
+        var children: [UIMenuElement] = [keyboard, files]
+        if config.tmuxSession.isNotBlank {
+            let tmuxActions: [UIMenuElement] = [
+                tmuxAction("新建窗口", image: "plus.rectangle", key: "c"),
+                tmuxAction("上一个窗口", image: "arrow.left.to.line", key: "p"),
+                tmuxAction("下一个窗口", image: "arrow.right.to.line", key: "n"),
+                tmuxAction("窗口列表", image: "list.bullet.rectangle", key: "w"),
+                tmuxAction("重命名窗口", image: "pencil", key: ","),
+            ]
+            children.append(UIMenu(title: "tmux", options: .displayInline, children: tmuxActions))
+        }
+
+        children.append(UIMenu(title: "", options: .displayInline, children: [
+            UIAction(title: "重新连接", image: UIImage(systemName: "arrow.clockwise")) { [weak self] _ in
+                self?.onReconnect()
+            },
+            UIAction(
+                title: "断开并返回",
+                image: UIImage(systemName: "xmark.circle"),
+                attributes: .destructive
+            ) { [weak self] _ in
+                guard let self else { return }
+                _ = self.terminalView.resignFirstResponder()
+                self.onClose()
+            },
+        ]))
+        return UIMenu(children: children)
+    }
+
+    private func tmuxAction(_ title: String, image: String, key: String) -> UIAction {
+        UIAction(title: title, image: UIImage(systemName: image)) { [weak self] _ in
+            self?.sendTmuxKey(key)
+        }
     }
 
     private func applyStatus() {

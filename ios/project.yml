@@ -12,6 +12,10 @@ settings:
     DEVELOPMENT_TEAM: ""           # set your Apple ID team in Xcode for sideload signing
     CODE_SIGN_STYLE: Automatic
     ENABLE_BITCODE: NO
+    # Xcode 26.6 deadlocks while probing clang because `-v -E -dM` fills the build service pipe.
+    # The wrapper drops only `-v` for that probe and forwards every real compile unchanged.
+    CC: "$(SRCROOT)/../scripts/xcode_clang_probe_wrapper.sh"
+    CLANG_ENABLE_EXPLICIT_MODULES: NO
 
 packages:
   Citadel:
@@ -35,7 +39,13 @@ targets:
       - package: SwiftTerm
     settings:
       base:
+        # Override the project-level team here too: Xcode GUI writes DEVELOPMENT_TEAM into the
+        # target's Debug/Release configs, which makes CLI builds hang on GatherProvisioningInputs.
+        # Keep it empty here; set your team in Xcode GUI when sideloading to a device.
+        DEVELOPMENT_TEAM: ""
         PRODUCT_BUNDLE_IDENTIFIER: com.devhc.aidevmob.ios
+        MARKETING_VERSION: 0.1.0
+        CURRENT_PROJECT_VERSION: 1
         # Generate Info.plist from the INFOPLIST_KEY_* build settings below (xcodegen sets no
         # explicit Info.plist file by default, so without this the link fails looking for one).
         GENERATE_INFOPLIST_FILE: YES
@@ -47,7 +57,35 @@ targets:
         EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
-        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         # frpc holds a tunnel open in-process; keeping the screen awake matches the Android app's
         # "keep screen on" setting. Background life is bounded by iOS regardless (see ios/AGENTS.md).
         INFOPLIST_KEY_UIRequiresPersistentWiFi: YES
+
+  AiDevMobTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: AiDevMobTests
+    dependencies:
+      - target: AiDevMob
+    settings:
+      base:
+        DEVELOPMENT_TEAM: ""
+        PRODUCT_BUNDLE_IDENTIFIER: com.devhc.aidevmob.ios.tests
+        GENERATE_INFOPLIST_FILE: YES
+
+  AiDevMobUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: AiDevMobUITests
+    dependencies:
+      - target: AiDevMob
+    settings:
+      base:
+        DEVELOPMENT_TEAM: ""
+        PRODUCT_BUNDLE_IDENTIFIER: com.devhc.aidevmob.ios.uitests
+        GENERATE_INFOPLIST_FILE: YES

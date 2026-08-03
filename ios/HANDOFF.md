@@ -1,6 +1,6 @@
 # iOS Port — Handoff
 
-**状态：端到端跑通 + iPad 原生适配 + tmux 探测修复 + 设置页 + 默认凭证/隧道。真机 iPad/iPhone 验证。**
+**状态：端到端跑通 + iPad 原生适配 + tmux 探测/窗口菜单 + SFTP + 加密备份/恢复 + 环境自检 + 连接内凭证管理 + 应用更新检查。真机 iPad/iPhone 目标编译验证。**
 **最后更新：2026-08-02**
 
 ---
@@ -22,6 +22,13 @@
 - ✅ **设置页**：终端字号/保持常亮/tmux 前缀键/滑动切 tmux 窗口 + 关于 + 帮助
 - ✅ **连接管理增强**：保存并连接 / 左滑复制连接 / 编辑器内删除
 - ✅ **终端增强**：字号控制 / 屏幕常亮 / 左右滑切 tmux 窗口
+- ✅ **SFTP 文件浏览器**：目录导航 / 面包屑 / 排序 / 隐藏文件 / 文本与图片预览 / 下载
+- ✅ **配置备份/恢复**：Android v1 兼容加密格式 / 全量合并恢复 / Keychain 密钥 / 文件导入导出
+- ✅ **环境自检**：frpc / CryptoKit / Keychain / 网络 / 电源后台 / 配置引用与端口检查
+- ✅ **终端 tmux 菜单**：新建/上一个/下一个/窗口列表/重命名 + 重连/断开/SFTP/键盘
+- ✅ **连接内凭证管理**：新建/编辑凭证，保存后自动选中并同步用户名与认证方式
+- ✅ **应用更新检查**：GitHub release + 可选 Keychain token + 直连/代理回退 + 发布说明/发布页
+- ✅ **原生 App Icon**：复用 Android 终端图标设计，1024×1024 无透明 PNG，可由脚本重生成
 
 ---
 
@@ -92,6 +99,62 @@ PTY 输出和 exec 不同——带大量 ANSI 转义码（颜色 `\e[1m`、光�
 `TextField("端口", value: $port, format: .number)` 会显示千分位逗号（如 `7,000`）。
 改成 `format: .number.grouping(.never)`。
 
+### 19. Xcode 26.6 的 clang 能力探测会死锁
+Xcode 26.6 会卡在 `ExecuteExternalTool ... clang -v -E -dM`：build service 等待 clang
+退出后才读取 pipe，而新版 clang 的 verbose 输出会先填满 pipe，双方永久等待。进程采样可见
+clang 阻塞在 `write`，`SWBBuildService` 主线程空闲；相同 clang 命令直接运行则立即完成。
+
+**解决方案**：项目级 `CC` 指向 `scripts/xcode_clang_probe_wrapper.sh`。wrapper 只在参数同时
+包含 `-v -E -dM` 时移除 `-v`，其余参数和所有真实编译均原样转发到当前 Xcode 的 clang。
+同时设置 `CLANG_ENABLE_EXPLICIT_MODULES = NO`，避免 Xcode 因 wrapper 路径误判编译器。
+模拟器和 generic iOS device 构建均已验证通过。
+
+### 20. 终端内打开文件必须复用 SSH transport
+frpc STCP visitor 通常只能稳定承载一个 TCP 连接。终端已连接时再新建独立 SSH/SFTP
+连接可能卡住或报 `ioOnClosedChannel`。`SshTerminalConnector.openSftpSession()` 在现有
+`SSHClient` 上新增 SFTP subsystem；`SftpSession` 关闭时只关 subsystem，不关父 SSH，PTY
+因此保持在线。没有活动终端时，文件浏览器才独立建立 SSH，并自行解析凭证、启动隧道和重定向端口。
+
+文件浏览在 iPhone/iPad 都以 sheet 展示。iPad 不替换 detail 中的 `TerminalHostingView`，
+因为移除它会触发 `viewWillDisappear` 并主动关闭终端。
+
+### 21. 备份入口的 presentation 状态必须放在独立页面
+最初把带 `@State` 的 `ConfigBackupSection` 直接放进设置 `Form`，并把 `.sheet`、
+`.fileImporter`、`.fileExporter` 挂在该 `Section` 上。iOS 26 会展平自定义 Section；点击
+“导出”虽然命中 Button，但 presentation 状态没有稳定保留，口令 sheet 不出现。
+
+**解决方案**：设置页只保留“配置备份” NavigationLink，所有状态和 presentation modifier
+由独立 `ConfigBackupView` 持有。iPhone 17 和 iPad Pro 13-inch UI 测试均已覆盖入口、导出按钮、
+两个安全输入框和取消/确认按钮。
+
+### 22. Keychain 往返测试不能禁用模拟器签名
+`CODE_SIGNING_ALLOWED=NO` 可以用于纯编译和 generic device 构建，但模拟器 App 会失去
+Keychain entitlement。此时 `CredentialStore` 的秘密字段读回 nil，备份往返测试会假失败。
+运行完整测试时不要传该参数；固定 Android/OpenSSL 加密向量测试本身不依赖 Keychain。
+
+### 23. `NWPathMonitor.cancel()` 不会恢复等待中的 continuation
+环境自检最初考虑用 task group 竞争网络回调和超时，但 loser 被取消时，单独调用
+`NWPathMonitor.cancel()` 不会触发 `pathUpdateHandler`，等待它的 continuation 永远不恢复，
+task group 退出时仍会等待 child，最终整次自检卡死。
+
+**解决方案**：`NetworkPathProbeOperation` 让网络回调和 2 秒超时都进入同一个 `finish`，用
+`NSLock` 保证只取走并恢复 continuation 一次，然后取消 monitor。不要改回只取消不 resume 的结构。
+
+### 24. iOS 更新检查不能照搬 APK 自安装
+`UpdateChecker` 与 Android 保持同一 GitHub release API、数字版本比较、可选 token 和
+`p.all3n.top` 回退规则；401/403/404/429 是确定响应，不走代理重试。token 使用 Keychain，
+并复用 Android 兼容备份原先保留的同一 account。
+
+iOS 应用不能下载后覆盖自己的可执行文件，因此 `UpdateCheckView` 在发现新版时展示发布说明并
+打开 release 页面，安装仍走当前使用的签名/TestFlight/侧载渠道。`project.yml` 显式设置
+`MARKETING_VERSION` 和 `CURRENT_PROJECT_VERSION`，否则生成的 Info.plist 可能使用 Xcode
+默认版本，导致比较错误。
+
+### 25. iPad 打开终端后默认收起侧栏
+`IPadShell` 用受控的 `NavigationSplitViewVisibility`：`activeTerminal` 出现时切到
+`.detailOnly`，避免侧栏挤占终端宽度；终端关闭时恢复 `.all`。用户仍可用系统侧栏按钮手动展开，
+展开不会卸载 detail 中的 `TerminalHostingView`，因此不会断开 PTY。
+
 ---
 
 ## 早期 bug（仍有效，保留）
@@ -131,7 +194,7 @@ PTY 输出和 exec 不同——带大量 ANSI 转义码（颜色 `\e[1m`、光�
 | **终端** | SwiftTerm（SPM） | 1.15.0 |
 | **UI** | UIKit（终端页）+ SwiftUI（管理页 + 设置页 + iPad split-view） | iOS 17+ |
 | **工程** | xcodegen（`project.yml` → `AiDevMob.xcodeproj`） | — |
-| **SFTP** | Citadel 内置 `SSHClient.openSFTP()`（**已验证可用**，阶段 2 待接 UI） | 0.12.1 |
+| **SFTP** | Citadel `SSHClient.openSFTP()` + 长连接 actor 会话 | 0.12.1 |
 
 ## 已交付文件
 
@@ -152,14 +215,22 @@ ios/
     │   ├── Stores.swift               Keychain + JSON 文件存储
     │   └── AppDefaults.swift          默认凭证/隧道 ID（UserDefaults）
     ├── Settings/
+    │   ├── ConfigBackup.swift         Android 兼容 PBKDF2 + AES-GCM 备份/合并恢复
+    │   ├── EnvironmentCheck.swift     6 项自检 + 纯配置完整性验证
+    │   ├── UpdateChecker.swift        GitHub release 查询/版本比较/代理回退/Keychain token
     │   └── SettingsStore.swift        终端字号/常亮/tmuxPrefix/swipeWindows/previewTheme
     ├── SSH/
     │   ├── SshTerminalConnector.swift SSH + TOFU + PTY + exec（PTY 方案！见 #10-12）
+    │   ├── SftpSession.swift          长连接 SFTP actor + 浏览/预览/流式下载
     │   └── TmuxSessionProbe.swift     tmux 探测（\r\n 归一化 + ANSI 剥离，见 #13）
     └── UI/
         ├── RootView.swift             size-class 分叉：IPadShell / CompactShell
         ├── TerminalHostingView.swift  UIViewControllerRepresentable 桥
         ├── ManagementViews.swift      4+1 tab + CRUD + tmux 探测 + 默认值 + 复制/删除/保存并连接
+        ├── ConfigBackupView.swift     加密导出/文件导入/口令 sheet
+        ├── EnvironmentCheckView.swift 自检摘要/逐项状态/重新检测
+        ├── FileBrowserView.swift      iPhone/iPad SFTP 浏览、预览、下载 sheet
+        ├── UpdateCheckView.swift      iPhone/iPad 更新检查、发布说明与 release 入口
         ├── SettingsView.swift         设置页（字号 stepper/常亮/tmux prefix/swipe + 关于 + 帮助）
         └── TerminalViewController.swift 终端页（字号/常亮/滑切窗口 + 顶栏/按键行/键盘/wheel/粘贴）
 ```
@@ -174,7 +245,7 @@ ios/
 | host key | RSA + Ed25519 + ECDSA | **Ed25519 + ECDSA only** |
 | keepalive | `keepAliveInterval = 15` | **无**（Citadel 不暴露） |
 | exec 通道 | sshj exec（正常） | **Citadel withExec 在 STCP 上失败**，用 PTY 替代（见 #10） |
-| SFTP | ✅ 完整 | Citadel 有 `openSFTP()`，**已验证可用**，UI 待接 |
+| SFTP | ✅ 完整 | ✅ 浏览/预览/下载；终端内复用 SSH transport |
 
 ## iOS vs Android 功能缺口（当前状态）
 
@@ -184,21 +255,22 @@ ios/
 - ✅ 默认凭证/隧道 + 新建连接预填
 - ✅ 连接管理：保存并连接 / 复制 / 编辑器内删除
 - ✅ 终端：字号 / 屏幕常亮 / 滑动切 tmux 窗口
+- ✅ SFTP 文件浏览器（默认目录回退、面包屑、上级/主页/刷新、排序、隐藏项、预览、下载、复制路径）
+- ✅ 配置备份/恢复（与 Android 共用 v1 envelope；PBKDF2-HMAC-SHA256 + AES-256-GCM）
+- ✅ 环境自检（按 iOS 架构覆盖 frpc、加密、Keychain、网络、电源后台、配置完整性）
+- ✅ tmux 窗口菜单（新建/切换/列表/重命名）
+- ✅ 连接编辑器内新建/编辑凭证并自动选中
+- ✅ 应用更新检查（GitHub release + token + 直连/代理回退；iOS 通过原签名渠道安装）
 
 **仍缺失（优先级排序）**：
-1. **SFTP 文件浏览器**（Citadel `openSFTP()` 已验证可用，需建 FileBrowserView）—— 计划阶段 2
-2. **配置备份/恢复**（加密导出/导入全部配置）—— 计划阶段 3
-3. **环境自检**（网络/frpc/配置完整性）—— 计划阶段 3
-4. tmux 窗口菜单（列表/重命名）—— 次要
-5. 内联新建凭证（连接编辑里直接建凭证）—— 次要
-6. 应用内更新检查（iOS 通常走 App Store/TestFlight，优先级低）
-7. 多语言（当前硬编码中文）
+1. 多语言（当前约 287 个中文字符串，含 SwiftUI、UIKit 与动态错误状态）
 
 ## 构建注意事项
 
 ```bash
 ./scripts/build_frpc_ios.sh             # 先编 Frpclib.xcframework
 ./scripts/build_frpc_ios.sh --simulator # 加模拟器 slice（模拟器调试需要）
+xcrun swift scripts/generate_ios_app_icon.swift ios/AiDevMob/Assets.xcassets/AppIcon.appiconset/AppIcon.png
 cd ios && xcodegen generate             # 加了新 .swift 文件要重跑
 ```
 
@@ -209,6 +281,22 @@ cd ios && xcodebuild -scheme AiDevMob \
   -configuration Debug build CODE_SIGNING_ALLOWED=NO
 ```
 
+**测试（需要模拟器正常签名，不能加 `CODE_SIGNING_ALLOWED=NO`）**：
+```bash
+cd ios && xcodebuild -quiet -scheme AiDevMob \
+  -destination 'platform=iOS Simulator,name=iPhone 17' \
+  -configuration Debug test
+
+# iPad 布局回归
+cd ios && xcodebuild -quiet -scheme AiDevMob \
+  -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' \
+  -configuration Debug test \
+  -only-testing:AiDevMobUITests/ConfigBackupUITests \
+  -only-testing:AiDevMobUITests/EnvironmentCheckUITests \
+  -only-testing:AiDevMobUITests/ConnectionCredentialUITests \
+  -only-testing:AiDevMobUITests/UpdateCheckUITests
+```
+
 **真机安装**：Xcode GUI → Settings → Accounts 登录 Apple ID → 选设备 → ⌘R。
 `project.yml` 里 `DEVELOPMENT_TEAM` 留空（CLI 编译用空 team 避免 GatherProvisioningInputs 卡死；
 真机签名在 Xcode GUI 里选 Personal Team 即可）。
@@ -216,7 +304,7 @@ cd ios && xcodebuild -scheme AiDevMob \
 **⚠️ CLI 编译坑**：`DEVELOPMENT_TEAM` 不留空时，`xcodebuild` 会卡在 `GatherProvisioningInputs`
 步骤（即使 `CODE_SIGNING_ALLOWED=NO`）。所以 project.yml 必须留空，签名只在 Xcode GUI 里设。
 
-## SFTP 已验证的 API（阶段 2 用）
+## SFTP 实现所用 API
 
 Citadel 0.12.1 的 SFTP 客户端 API（`SSHClient.openSFTP()`）：
 - `sftp.listDirectory(atPath:) -> [SFTPMessage.Name]`（需 `.flatMap { $0.components }` 扁平化）

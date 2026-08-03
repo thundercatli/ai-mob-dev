@@ -14,7 +14,7 @@ struct SettingsView: View {
     /// then skips its own outer NavigationStack and navigationTitle. Defaults to false.
     var embeddedInSplit: Bool = false
 
-    private let store = SettingsStore.shared
+    @ObservedObject private var store = SettingsStore.shared
 
     var body: some View {
         if embeddedInSplit {
@@ -27,9 +27,22 @@ struct SettingsView: View {
     @ViewBuilder
     private var content: some View {
         Form {
+            diagnosticsSection
             terminalSection
+            dataSection
+            updateSection
             aboutSection
             helpSection
+        }
+    }
+
+    private var diagnosticsSection: some View {
+        Section("诊断") {
+            NavigationLink {
+                EnvironmentCheckView()
+            } label: {
+                Label("环境自检", systemImage: "stethoscope")
+            }
         }
     }
 
@@ -67,19 +80,39 @@ struct SettingsView: View {
             }
             .padding(.vertical, 2)
 
-            Toggle("保持屏幕常亮", isOn: binding(.keepScreenOn))
+            Toggle("保持屏幕常亮", isOn: binding(\SettingsStore.keepScreenOn))
 
-            Picker("tmux 前缀键", selection: binding(.tmuxPrefix)) {
-                ForEach(prefixOptions(), id: \.self) { letter in
-                    Text("Ctrl-\(String(letter).uppercased())").tag(PrefixOption(letter))
+            Picker("tmux 前缀键", selection: binding(\SettingsStore.tmuxPrefix)) {
+                ForEach(prefixOptions(), id: \.self) { option in
+                    Text("Ctrl-\(String(option.letter).uppercased())").tag(option)
                 }
             }
 
-            Toggle("滑动切换 tmux 窗口", isOn: binding(.swipeSwitchesWindows))
+            Toggle("滑动切换 tmux 窗口", isOn: binding(\SettingsStore.swipeSwitchesWindows))
         } header: {
             Text("终端")
         } footer: {
             Text("字号在下次打开终端时生效；其余设置即时生效。滑动切换：在终端上左滑下一个窗口，右滑上一个窗口。")
+        }
+    }
+
+    private var dataSection: some View {
+        Section("数据") {
+            NavigationLink {
+                ConfigBackupView()
+            } label: {
+                Label("配置备份", systemImage: "lock.doc")
+            }
+        }
+    }
+
+    private var updateSection: some View {
+        Section("更新") {
+            NavigationLink {
+                UpdateCheckView()
+            } label: {
+                Label("应用更新", systemImage: "arrow.down.circle")
+            }
         }
     }
 
@@ -131,7 +164,7 @@ struct SettingsView: View {
     }
 
     private func prefixOptions() -> [PrefixOption] {
-        ("a"..."z").map { PrefixOption($0) }
+        "abcdefghijklmnopqrstuvwxyz".map(PrefixOption.init)
     }
 
     private func aboutRow(_ title: String, _ value: String) -> some View {
@@ -162,8 +195,9 @@ struct SettingsView: View {
     private func deviceModel() -> String {
         var systemInfo = utsname()
         uname(&systemInfo)
-        let mirror = Mirror(reflecting: systemInfo.machine)
-        let identifier = mirror.children.reduce("") { $0 + String(describing: $1.value) }
+        let identifier = withUnsafePointer(to: &systemInfo.machine) { pointer in
+            pointer.withMemoryRebound(to: CChar.self, capacity: 1) { String(cString: $0) }
+        }
         return identifier.isEmpty ? UIDevice.current.model : identifier
     }
 

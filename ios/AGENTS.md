@@ -24,13 +24,23 @@ TOFU host keys, password/private-key auth, PTY shell + tmux attach.
   the Command Line Tools — `gomobile bind` needs the iPhoneOS SDK that only ships with Xcode),
   and `gomobile`/`gobind` (the script installs them on demand).
 - The script guards both prerequisites and prints the exact fix if missing.
+- Xcode 26.6 can deadlock at `ExecuteExternalTool ... clang -v -E -dM`: its build service waits
+  for clang to exit before draining a pipe that clang's verbose probe has already filled.
+  `scripts/xcode_clang_probe_wrapper.sh` is configured as the project `CC`; it removes only `-v`
+  from that exact probe and forwards every real compile unchanged. Keep
+  `CLANG_ENABLE_EXPLICIT_MODULES = NO` while the wrapper is configured.
 
 ## Commands
 
 ```bash
 ./scripts/build_frpc_ios.sh             # produce Frpclib.xcframework (real device, arm64)
 ./scripts/build_frpc_ios.sh --simulator # also build the arm64-simulator slice (Apple-silicon Macs)
+xcrun swift scripts/generate_ios_app_icon.swift ios/AiDevMob/Assets.xcassets/AppIcon.appiconset/AppIcon.png
 ```
+
+The app icon is a 1024×1024 opaque PNG rendered from the same geometry and colors as Android's
+adaptive icon. Keep `scripts/generate_ios_app_icon.swift` and the Android launcher vector resources
+in sync; do not replace `AppIcon.png` with a screenshot or an image containing an alpha channel.
 
 Open `ios/AiDevMob.xcodeproj` in Xcode, pick your device or simulator, Run. Sideload signing
 on a free Apple account works (7-day cert); the app is never distributed via App Store.
@@ -59,9 +69,10 @@ view (`RootView`) forks on `@Environment(\.horizontalSizeClass)` so iPhone and i
   UIKit push (full-screen terminal with its own back chevron).
 - **regular (iPad)** — `IPadShell`: a two-column `NavigationSplitView`. The sidebar is a
   `NavigationStack` whose root is a category menu (连接/凭证/隧道/服务器); selecting one drills
-  into the matching list view. The **detail** column shows the live terminal (or a placeholder),
-  and opening a connection fills the detail **without dismissing the sidebar** — so you can
-  switch connections or edit tunnels while a terminal stays live.
+  into the matching list view. The **detail** column shows the live terminal (or a placeholder).
+  Opening a connection switches `columnVisibility` to `.detailOnly` so the sidebar does not reduce
+  the terminal width; the system control can reopen it without unmounting the live terminal, and
+  closing the terminal restores `.all`.
 
 Gotchas:
 - The four list views (`ConnectionListView`, `CredentialListView`, `TunnelListView`,
@@ -80,6 +91,83 @@ Gotchas:
   re-created), so size-class transitions don't accumulate constraints.
 - Android has **no** tablet adaptation to mirror (it hardcodes an 80×24 terminal and stretches);
   the iPad UX is iOS-only.
+
+## SFTP file browser
+
+- `SftpSession` is an actor and intentionally keeps one `SFTPClient` open for the browser's whole
+  lifetime. Keep all SFTP requests serialized through it; reconnecting for each directory is slow
+  over frpc and can exhaust Citadel subsystem handles.
+- Opening Files from a live terminal reuses that terminal's `SSHClient` and opens only a new SFTP
+  subsystem. This is required for STCP visitors that accept one TCP connection at a time. Closing
+  the attached SFTP session must not close the parent SSH connection.
+- A standalone browser resolves the latest credential, starts/waits for its configured tunnel, and
+  redirects SSH to `127.0.0.1:<bindPort>` exactly like the terminal path.
+- The browser is presented as a sheet on iPhone and iPad. On iPad, do not replace the detail column
+  with it: removing `TerminalHostingView` triggers `viewWillDisappear` and closes the live PTY.
+- Text previews are capped at 512 KB and image previews at 12 MB. Downloads stream to a unique
+  temporary file and hand that URL to the system share sheet; do not load arbitrary downloads into
+  memory.
+
+## Encrypted configuration backup
+
+- `ConfigBackup` reads and writes the same version-1 envelope as Android: PBKDF2-HMAC-SHA256
+  (210,000 iterations) and AES-256-GCM with ciphertext followed by the 16-byte tag. Keep enum raw
+  values and JSON field names Android-compatible.
+- Restore decodes and validates the complete payload before merging records by id. An iOS backup
+  explicitly writes null default credential/tunnel ids so restore can clear them; older Android
+  backups omit those iOS-only fields and therefore leave existing iOS defaults unchanged.
+- Credential secrets are exported from and restored to the Keychain. Simulator tests that cover
+  the full round trip must run with normal simulator signing; `CODE_SIGNING_ALLOWED=NO` removes the
+  Keychain entitlement and makes secrets read back as nil.
+- The backup controls live on a dedicated settings destination. Keep presentation state there:
+  attaching `.sheet`/`.fileImporter`/`.fileExporter` to a custom `Section` nested directly in a
+  `Form` caused taps to lose state and present nothing on iOS 26.
+- After changing backup UI, run `ConfigBackupUITests` on both an iPhone and iPad destination. It
+  verifies the settings route, export button, medium passphrase sheet, secure fields, and actions.
+
+## Environment self-check
+
+- iOS checks the same failure domains as Android, adapted to the in-process runtime: Frpclib
+  initialization, CryptoKit AES-GCM, Keychain round trip, `NWPathMonitor` network state, Low Power
+  Mode/background limits, and configuration references/secrets/ports.
+- The network check is a one-shot `NWPathMonitor` probe guarded by a two-second timeout. Both the
+  path callback and timeout feed one lock-protected continuation; do not replace it with a task
+  group that merely cancels the monitor, because cancellation does not resume its continuation.
+- Configuration validation is pure (`EnvironmentCheck.evaluateConfiguration`) so unit tests can
+  cover missing references, secrets, illegal ports, and duplicate tunnel bind ports without
+  touching user stores.
+- `EnvironmentCheckView` owns its async state on the main actor and lives behind the settings
+  NavigationLink, which works in both the iPhone NavigationStack and iPad sidebar stack.
+
+## Connection credentials and terminal tmux menu
+
+- `ConnectionEditView` can create or edit credentials without leaving the connection editor. After
+  saving, reload the credential list, select the saved credential, and synchronize username/auth
+  fields so the connection uses the new value immediately.
+- Credential editing and the tmux session picker share one enum-backed `.sheet(item:)`. Do not add
+  separate item sheets to the same view; competing sheet modifiers can prevent one presentation
+  from appearing.
+- `TerminalViewController` exposes its secondary commands through one `UIMenu`: keyboard, SFTP,
+  tmux new/previous/next/list/rename, reconnect, and disconnect. Plain-shell connections omit the
+  tmux actions.
+
+## In-app update check
+
+- `UpdateChecker` mirrors Android's GitHub release query: numeric component version comparison,
+  optional Keychain-backed token, and direct API access followed by the `p.all3n.top` path-prefix
+  mirror only for transport, malformed-response, or server failures. Definitive 401/403/404/429
+  responses must not retry through the mirror.
+- `UpdateCheckView` is a dedicated settings destination and works in both the iPhone stack and iPad
+  split view. iOS cannot download and overwrite its own executable like Android installs an APK;
+  an available release shows notes and opens the releases page for installation through the same
+  signing/sideload channel.
+- Keep `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` set in `project.yml`; update comparisons
+  read `CFBundleShortVersionString`, so an implicit Xcode default can produce incorrect results.
+- `UpdateTokenStore` uses the same Keychain account previously reserved by Android-compatible
+  backups. Do not create a second token setting or restored tokens will appear to be lost.
+- After changing update UI, run `UpdateCheckerTests` plus `UpdateCheckUITests` on both iPhone and
+  iPad. The network tests use a mock URL protocol and must cover mirror fallback and no-retry HTTP
+  failures without making live GitHub requests.
 
 ## The two iOS-only constraints (both have mitigations)
 

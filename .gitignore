@@ -23,9 +23,13 @@ ios/Frameworks/
 
 # IDE
 .idea/
+.zcode/
 *.iml
 *.iws
 *.ipr
+
+# Generated repository snapshot for local AI tooling
+repomix-output.xml
 
 # Xcode: 工程文件提交,但每台机器的 user 数据不提交
 *.xcuserstate
