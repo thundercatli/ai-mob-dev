@@ -71,6 +71,8 @@
     </plurals>
     <string name="tunnel_notification_partial">%1$d/%2$d 条隧道已连接</string>
     <string name="tunnel_error_not_executable">frpc 二进制不可执行：%1$s</string>
+    <string name="tunnel_error_cpp_start_failed">C++ FRPC 内核启动失败。</string>
+    <string name="tunnel_log_cpp_starting">正在启动 C++ STCP 内核（FRP v1、TCP/yamux 传输）</string>
     <string name="tunnel_error_no_server">这条隧道没有选择 frps 服务器，或者原来关联的服务器已被删除。请在隧道设置里选一个。</string>
     <string name="tunnel_error_gave_up">退出码 %1$d，已重试 %2$d 次，停止重试</string>
     <string name="tunnel_gate_failed">隧道「%1$s」启动失败：%2$s</string>
@@ -213,6 +215,10 @@
     <string name="settings_open_system_failed">打不开系统设置页</string>
 
     <string name="settings_section_global">全局配置</string>
+    <string name="settings_frpc_kernel">FRPC 内核</string>
+    <string name="settings_frpc_kernel_go">Go（稳定版）</string>
+    <string name="settings_frpc_kernel_cpp">C++（STCP 预览版）</string>
+    <string name="settings_frpc_kernel_detail">启动隧道时生效。可复用 C++ 内核支持 STCP 登录、token 鉴权、TLS、yamux/直连 TCP、载荷加密与 Snappy 压缩。</string>
     <string name="settings_font_size">终端字体大小</string>
     <string name="settings_font_size_value">%1$d sp，下次进入终端生效</string>
     <string name="settings_keep_screen_on">终端保持屏幕常亮</string>
@@ -280,6 +286,9 @@
     <string name="env_frpc_runs_no_output">能启动，但没有输出版本号（退出码 %1$d）</string>
     <string name="env_frpc_runs_ok">frpc %1$s</string>
     <string name="env_frpc_runs_failed">无法执行：%1$s</string>
+    <string name="env_frpc_cpp">C++ FRPC 内核</string>
+    <string name="env_frpc_cpp_ok">JNI 动态库加载成功</string>
+    <string name="env_frpc_cpp_failed">原生内核加载失败：%1$s</string>
     <string name="env_crypto">加密提供者</string>
     <string name="env_crypto_missing">没有注册 BC 提供者，SSH 密钥交换可能失败。</string>
     <string name="env_crypto_ok">BouncyCastle %1$s（已替换掉系统精简版）</string>
@@ -324,6 +333,12 @@
     <string name="server_title_new">新建 frps 服务器</string>
     <string name="server_title_edit">编辑 frps 服务器</string>
     <string name="server_hint_name">名称（可选）</string>
+    <string name="server_hint_user">frpc 用户命名空间（可选）</string>
+    <string name="server_option_tls">启用 TLS（官方 frpc 默认）</string>
+    <string name="server_option_tcp_mux">启用 TCP 多路复用（yamux）</string>
+    <string name="tunnel_hint_server_user">serverUser（访问其他用户代理时填写）</string>
+    <string name="tunnel_option_encryption">加密 STCP visitor 载荷</string>
+    <string name="tunnel_option_compression">压缩 STCP visitor 载荷（Snappy）</string>
     <string name="server_error_fields">地址和端口必填</string>
     <string name="settings_section_backup">配置备份</string>
     <string name="backup_intro">卸载会连同数据和密钥一起删除。导出一份加密备份，重装或换机后可以恢复。</string>

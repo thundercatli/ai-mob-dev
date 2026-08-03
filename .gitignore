@@ -1,7 +1,9 @@
 # Build output
 build/
 .gradle/
+.gradle-user-home/
 .kotlin/
+.cxx/
 *.apk
 *.aab
 

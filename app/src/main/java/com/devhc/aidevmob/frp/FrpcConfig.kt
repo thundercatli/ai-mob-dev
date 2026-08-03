@@ -21,7 +21,10 @@ data class FrpcConfig(
     /** Must match the `name` of the stcp proxy on the server side. */
     val serverName: String,
     /** Local port this visitor listens on; SSH then connects to 127.0.0.1:<bindPort>. */
-    val bindPort: Int
+    val bindPort: Int,
+    val serverUser: String = "",
+    val useEncryption: Boolean = false,
+    val useCompression: Boolean = false
 ) {
     val displayName: String
         get() = name.ifBlank { serverName }

@@ -8,11 +8,11 @@ An Android client for driving the tmux session on your computer from your phone:
 
 - **Connections** — any number of SSH profiles, each nameable, duplicable and deletable. Every row is labelled with the tunnel it goes through (and whether that tunnel is up); the editor can probe the remote host for existing tmux sessions to pick from, create a new one, or skip tmux. Picking a tunnel derives Host/Port from its local port, so there is nothing to type
 - **Credentials** — a username plus a password or private key is stored once as a "credential" and shared by any number of connections. Keys can be picked from local storage (SAF) or pasted from the clipboard. Everything lives in EncryptedSharedPreferences. Secrets stored inline on connections by older versions are lifted into credential entries on first launch
-- **Tunnels** — two levels: a *server* holds an frps endpoint (address, port, auth token), and each *tunnel* is an STCP visitor under one of them (proxy name, secret key, local port), so visitors sharing an frps describe it once. At runtime each tunnel is still its own frpc process on its own local port, started and stopped individually, with its log viewable in-app. Only frpc ever runs on the phone
+- **Tunnels** — two levels: a *server* holds an frps endpoint (address, port, auth token), and each *tunnel* is an STCP visitor under one of them (proxy name, secret key, local port), so visitors sharing an frps describe it once. Each tunnel runs independently on its own local port and can use either the stable Go executable or the in-process C++ preview core, selected in Settings. Only frpc ever runs on the phone
 - **Automatic tunnelling** — a connection can be bound to a tunnel; opening its terminal starts that tunnel if needed and waits for it to come up
 - **Terminal** — a full VT100 terminal (Termux's terminal-view / terminal-emulator) plus an extra key row (arrows ←↓↑→ repeat when held, and their encoding follows the foreground program's application-cursor mode, so they work inside vim / less), with automatic reconnection that resumes losslessly when tmux is in play
 - **Languages** — English and 简体中文, following the system by default and switchable in settings (on Android 13+ it also plugs into the system's per-app language setting)
-- **Settings** — self-diagnostics (is frpc executable, and does actually running it report a version; did BouncyCastle get swapped in; network, permissions, and any connection missing its credential), global options (terminal font size, keep screen on, startup permission prompt, language), version and signing fingerprint, in-app update check and install, and help
+- **Settings** — FRPC kernel selection, self-diagnostics (is frpc executable, and does actually running it report a version; did BouncyCastle get swapped in; network, permissions, and any connection missing its credential), global options (terminal font size, keep screen on, startup permission prompt, language), version and signing fingerprint, in-app update check and install, and help
 
 ## In-app updates
 
@@ -44,11 +44,19 @@ Requires JDK 17, the Android SDK, the Android NDK and Go.
 
 The script clones the frp source (or uses an existing checkout via `FRP_ROOT`) and cross-compiles it with the NDK's clang under `GOOS=android CGO_ENABLED=1`.
 
+The C++ preview core is compiled automatically by Gradle through CMake. Its platform-neutral C API and implementation live in `native/frpc_core`; Android-specific JNI glue is isolated under `app/src/main/cpp`. See `native/frpc_core/README.md` for the supported FRP subset and the iOS integration boundary.
+
 **Why it must be compiled here**: frp's official `linux_arm64` and `android_arm64` release archives are both pure static Go builds (`CGO_ENABLED=0`). They do not link against Bionic, so they never use Android's own networking and resolver. Rebuilding with the NDK toolchain and cgo enabled is the only way to get those.
 
 **Why the `.so` name**: Android 10+ refuses to execute files in an app's private directory, but anything packaged as a native library is extracted to `nativeLibraryDir` at install time with the execute bit set. Together with `packaging.jniLibs.useLegacyPackaging = true` in `app/build.gradle.kts` (which forces `extractNativeLibs=true`), that is what lets `ProcessBuilder` actually exec it.
 
 Only `arm64-v8a` is built, so tunnelling does not work on the usual x86_64 emulator.
+
+### C++ FRPC preview
+
+Select **Settings → FRPC kernel → C++ (STCP preview)**, then stop and restart a tunnel. Running tunnels keep the kernel they started with.
+
+The C++ kernel implements the FRP v1 STCP visitor flow with control login/run ID, token auth, user/serverUser scoping, outer TLS, configurable yamux or direct TCP, AES-CFB visitor encryption, and Snappy framed compression. The Go kernel remains the stable fallback for non-TCP transports, wire v2, plugins, custom certificate authentication, and automatic control-session reconnect.
 
 ## Translations
 

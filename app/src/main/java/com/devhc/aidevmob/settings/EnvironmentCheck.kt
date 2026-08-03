@@ -10,6 +10,7 @@ import android.os.PowerManager
 import androidx.core.content.ContextCompat
 import com.devhc.aidevmob.R
 import com.devhc.aidevmob.frp.FrpcConfigStore
+import com.devhc.aidevmob.frp.nativecore.NativeFrpcBridge
 import com.devhc.aidevmob.ssh.ConnectionStore
 import com.devhc.aidevmob.ssh.CredentialStore
 import java.io.File
@@ -48,6 +49,7 @@ object EnvironmentCheck {
     fun run(context: Context): List<Result> = listOf(
         frpcBinary(context),
         frpcRuns(context),
+        frpcCppCore(context),
         cryptoProvider(context),
         network(context),
         notifications(context),
@@ -111,6 +113,25 @@ object EnvironmentCheck {
                 )
             )
         }
+    }
+
+    /** Loads the JNI library so ABI/linker failures are visible before the C++ kernel is selected. */
+    private fun frpcCppCore(context: Context): Result {
+        val title = context.getString(R.string.env_frpc_cpp)
+        return runCatching { NativeFrpcBridge.isAvailable() }
+            .fold(
+                onSuccess = { Result(title, Status.OK, context.getString(R.string.env_frpc_cpp_ok)) },
+                onFailure = { error ->
+                    Result(
+                        title,
+                        Status.FAIL,
+                        context.getString(
+                            R.string.env_frpc_cpp_failed,
+                            error.message ?: error::class.java.simpleName
+                        )
+                    )
+                }
+            )
     }
 
     /**

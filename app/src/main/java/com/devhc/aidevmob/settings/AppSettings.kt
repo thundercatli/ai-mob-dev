@@ -3,6 +3,7 @@ package com.devhc.aidevmob.settings
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.devhc.aidevmob.frp.FrpcKernel
 
 /**
  * App-wide preferences, as opposed to the per-connection / per-tunnel config in the other stores.
@@ -55,6 +56,11 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean(KEY_SWIPE_WINDOWS, true)
         set(value) = prefs.edit().putBoolean(KEY_SWIPE_WINDOWS, value).apply()
 
+    /** Runtime used for newly started FRPC tunnels. Running tunnels keep their current kernel. */
+    var frpcKernel: FrpcKernel
+        get() = FrpcKernel.from(prefs.getString(KEY_FRPC_KERNEL, null))
+        set(value) = prefs.edit().putString(KEY_FRPC_KERNEL, value.name).apply()
+
     /**
      * GitHub token used only to read the releases list. Optional: the repo is public, so this is
      * needed only to get past the anonymous rate limit.
@@ -75,5 +81,6 @@ class AppSettings(context: Context) {
         private const val KEY_TMUX_PREFIX = "tmuxPrefix"
         private const val KEY_SWIPE_WINDOWS = "swipeSwitchesWindows"
         private const val KEY_PREVIEW_THEME = "previewTheme"
+        private const val KEY_FRPC_KERNEL = "frpcKernel"
     }
 }

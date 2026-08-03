@@ -3,6 +3,7 @@ package com.devhc.aidevmob.settings
 import android.content.Context
 import com.devhc.aidevmob.frp.FrpcConfig
 import com.devhc.aidevmob.frp.FrpcConfigStore
+import com.devhc.aidevmob.frp.FrpcKernel
 import com.devhc.aidevmob.frp.FrpsServer
 import com.devhc.aidevmob.frp.FrpsServerStore
 import com.devhc.aidevmob.ssh.AuthMethod
@@ -101,6 +102,9 @@ object ConfigBackup {
                     put("serverAddr", server.serverAddr)
                     put("serverPort", server.serverPort)
                     put("authToken", server.authToken ?: JSONObject.NULL)
+                    put("user", server.user)
+                    put("tlsEnable", server.tlsEnable)
+                    put("tcpMux", server.tcpMux)
                 })
             }
         })
@@ -113,6 +117,9 @@ object ConfigBackup {
                     put("serverName", tunnel.serverName)
                     put("secretKey", tunnel.secretKey)
                     put("bindPort", tunnel.bindPort)
+                    put("serverUser", tunnel.serverUser)
+                    put("useEncryption", tunnel.useEncryption)
+                    put("useCompression", tunnel.useCompression)
                 })
             }
         })
@@ -149,6 +156,7 @@ object ConfigBackup {
             val settings = AppSettings(context)
             put("terminalFontSize", settings.terminalFontSize)
             put("keepScreenOn", settings.keepScreenOn)
+            put("frpcKernel", settings.frpcKernel.name)
             put("updateToken", settings.updateToken ?: JSONObject.NULL)
         })
     }
@@ -170,7 +178,10 @@ object ConfigBackup {
                     name = json.optString("name"),
                     serverAddr = json.requireString("serverAddr"),
                     serverPort = json.optInt("serverPort", 7000),
-                    authToken = json.optStringOrNull("authToken")
+                    authToken = json.optStringOrNull("authToken"),
+                    user = json.optString("user"),
+                    tlsEnable = json.optBoolean("tlsEnable", true),
+                    tcpMux = json.optBoolean("tcpMux", true)
                 )
             )
         }
@@ -184,7 +195,10 @@ object ConfigBackup {
                     serverId = json.optStringOrNull("serverId"),
                     secretKey = json.optString("secretKey"),
                     serverName = json.requireString("serverName"),
-                    bindPort = json.optInt("bindPort", 6022)
+                    bindPort = json.optInt("bindPort", 6022),
+                    serverUser = json.optString("serverUser"),
+                    useEncryption = json.optBoolean("useEncryption", false),
+                    useCompression = json.optBoolean("useCompression", false)
                 )
             )
         }
@@ -231,6 +245,7 @@ object ConfigBackup {
             val settings = AppSettings(context)
             settings.terminalFontSize = settingsJson.optInt("terminalFontSize", AppSettings.DEFAULT_FONT_SIZE)
             settings.keepScreenOn = settingsJson.optBoolean("keepScreenOn", false)
+            settings.frpcKernel = FrpcKernel.from(settingsJson.optString("frpcKernel"))
             settingsJson.optStringOrNull("updateToken")?.let { settings.updateToken = it }
         }
 

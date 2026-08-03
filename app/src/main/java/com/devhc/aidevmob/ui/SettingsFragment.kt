@@ -22,6 +22,7 @@ import com.devhc.aidevmob.R
 import com.devhc.aidevmob.databinding.FragmentSettingsBinding
 import com.devhc.aidevmob.databinding.DialogPassphraseBinding
 import com.devhc.aidevmob.databinding.ItemEnvCheckBinding
+import com.devhc.aidevmob.frp.FrpcKernel
 import com.devhc.aidevmob.settings.ApkDownloader
 import com.devhc.aidevmob.settings.AppSettings
 import com.devhc.aidevmob.settings.ConfigBackup
@@ -207,6 +208,23 @@ class SettingsFragment : Fragment() {
     // ---------------------------------------------------------------- global settings
 
     private fun setUpGlobalSettings() {
+        val frpcKernels = FrpcKernel.entries
+        val frpcKernelLabels = frpcKernels.map {
+            getString(
+                when (it) {
+                    FrpcKernel.GO -> R.string.settings_frpc_kernel_go
+                    FrpcKernel.CPP -> R.string.settings_frpc_kernel_cpp
+                }
+            )
+        }
+        binding.dropdownFrpcKernel.setSimpleItems(frpcKernelLabels.toTypedArray())
+        binding.dropdownFrpcKernel.setText(
+            frpcKernelLabels[settings.frpcKernel.ordinal], false
+        )
+        binding.dropdownFrpcKernel.setOnItemClickListener { _, _, position, _ ->
+            settings.frpcKernel = frpcKernels[position]
+        }
+
         showFontSize()
         binding.buttonFontSmaller.setOnClickListener { adjustFontSize(-1) }
         binding.buttonFontBigger.setOnClickListener { adjustFontSize(+1) }

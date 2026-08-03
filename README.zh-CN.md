@@ -8,11 +8,11 @@
 
 - **连接管理**：多个 SSH 连接配置，支持命名、复制、删除。列表里每条连接上方标出所走的隧道名（以及是否在运行），编辑页可以直接探测远端已有的 tmux session 来选，也可以新建一个或不用 tmux。选了隧道后 Host/Port 由隧道的本地端口决定，不用手填
 - **认证管理**：用户名 + 密码/私钥单独存成「认证」，多个连接复用同一份；私钥可以从手机本地文件选（SAF）或从剪贴板粘贴。全部存在 EncryptedSharedPreferences 里。老版本里写在连接上的凭据会在首次启动时自动抽成认证条目
-- **隧道管理**：分两层——「服务器」保存 frps 的地址/端口/token，「隧道」是挂在某台服务器下的 STCP visitor（proxy 名 / secretKey / 本地端口）。同一台 frps 下的多条隧道只需描述一次端点。运行时仍是每条隧道一个 frpc 进程、独立本地端口，可单独启停并查看日志。手机上只跑 frpc，不跑 frps
+- **隧道管理**：分两层——「服务器」保存 frps 的地址/端口/token，「隧道」是挂在某台服务器下的 STCP visitor（proxy 名 / secretKey / 本地端口）。同一台 frps 下的多条隧道只需描述一次端点。每条隧道使用独立本地端口，可在设置里选择稳定的 Go 可执行内核或进程内 C++ 预览内核，并单独启停、查看日志。手机上只跑 frpc，不跑 frps
 - **自动打隧道**：连接可关联某条隧道，进入终端时若隧道未启动会自动拉起并等待就绪
 - **终端**：VT100 全功能终端（基于 Termux 的 terminal-view / terminal-emulator），附加功能键行（方向键 ←↓↑→ 长按连发，编码跟随程序的 application cursor 模式，vim / less 里也能用）、断线自动重连（配合 tmux 可无损续接）
 - **多语言**：中文 / English，跟随系统，也可以在设置里手动切（Android 13+ 同时接入系统的「应用语言」设置）
-- **设置**：环境自检（frpc 是否可执行并真的跑一次拿版本、BouncyCastle 是否替换成功、网络、权限、以及有没有连接漏配认证）、全局配置（终端字号、屏幕常亮、启动权限提示、语言）、版本与签名指纹、应用内检查更新与升级、帮助
+- **设置**：FRPC 内核切换、环境自检（frpc 是否可执行并真的跑一次拿版本、BouncyCastle 是否替换成功、网络、权限、以及有没有连接漏配认证）、全局配置（终端字号、屏幕常亮、启动权限提示、语言）、版本与签名指纹、应用内检查更新与升级、帮助
 
 ## 应用内更新
 
@@ -44,11 +44,19 @@ https://p.all3n.top/github.com/all3n/ai-mob-dev/releases/download/v0.2.3/ai-mob-
 
 脚本会克隆 frp 源码（或用 `FRP_ROOT` 指向已有的 checkout），然后用 NDK 的 clang 以 `GOOS=android CGO_ENABLED=1` 交叉编译。
 
+C++ 预览内核由 Gradle 通过 CMake 自动编译。平台无关的 C API 和实现放在 `native/frpc_core`，Android JNI 胶水单独放在 `app/src/main/cpp`。支持范围和后续 iOS 接入边界见 `native/frpc_core/README.md`。
+
 **为什么必须自己编译**：frp 官方 release 里的 `linux_arm64` 和 `android_arm64` 两个包都是纯 Go 静态编译（`CGO_ENABLED=0`），不链接 Bionic，因此不走 Android 自己的网络/解析实现。必须用 NDK 工具链开 cgo 重新编译。
 
 **为什么叫 `.so`**：Android 10+ 不允许执行应用私有目录下的文件，但作为 native library 打包的文件会在安装时被解压到 `nativeLibraryDir` 并带上可执行权限。配合 `app/build.gradle.kts` 里的 `packaging.jniLibs.useLegacyPackaging = true`（强制 `extractNativeLibs=true`），`ProcessBuilder` 才能真正 exec 它。
 
 目前只打 `arm64-v8a`，所以在常见的 x86_64 模拟器上隧道功能无法使用。
+
+### C++ FRPC 预览内核
+
+在「设置 → FRPC 内核」选择「C++（STCP 预览版）」，然后停止并重新启动隧道即可切换；已经运行的隧道保持启动时使用的内核。
+
+当前 C++ 内核覆盖 FRP v1 的 STCP visitor 流程，包括 control login/run ID、token 鉴权、user/serverUser 作用域、外层 TLS、可配置 yamux/直连 TCP、AES-CFB visitor 加密和 Snappy framed 压缩。非 TCP 传输、wire v2、插件、自定义证书鉴权和 control 自动重连仍使用稳定的 Go 内核兜底。
 
 ## 翻译
 

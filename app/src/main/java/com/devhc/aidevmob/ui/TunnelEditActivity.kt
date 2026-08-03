@@ -159,6 +159,9 @@ class TunnelEditActivity : AppCompatActivity() {
             dialogBinding.editServerAddr.setText(it.serverAddr)
             dialogBinding.editServerPort.setText(it.serverPort.toString())
             dialogBinding.editAuthToken.setText(it.authToken ?: "")
+            dialogBinding.editServerUser.setText(it.user)
+            dialogBinding.switchServerTls.isChecked = it.tlsEnable
+            dialogBinding.switchServerTcpMux.isChecked = it.tcpMux
         }
 
         val dialog = MaterialAlertDialogBuilder(this)
@@ -183,7 +186,10 @@ class TunnelEditActivity : AppCompatActivity() {
                 name = dialogBinding.editServerLabel.text?.toString()?.trim().orEmpty(),
                 serverAddr = addr,
                 serverPort = port,
-                authToken = dialogBinding.editAuthToken.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+                authToken = dialogBinding.editAuthToken.text?.toString()?.trim()?.takeIf { it.isNotEmpty() },
+                user = dialogBinding.editServerUser.text?.toString()?.trim().orEmpty(),
+                tlsEnable = dialogBinding.switchServerTls.isChecked,
+                tcpMux = dialogBinding.switchServerTcpMux.isChecked
             )
             serverStore.upsert(saved)
             reloadServers(preferId = saved.id)
@@ -196,6 +202,9 @@ class TunnelEditActivity : AppCompatActivity() {
         reloadServers(preferId = config.serverId)
         binding.editServerName.setText(config.serverName)
         binding.editSecretKey.setText(config.secretKey)
+        binding.editServerUser.setText(config.serverUser)
+        binding.switchUseEncryption.isChecked = config.useEncryption
+        binding.switchUseCompression.isChecked = config.useCompression
         binding.editBindPort.setText(config.bindPort.toString())
     }
 
@@ -229,7 +238,10 @@ class TunnelEditActivity : AppCompatActivity() {
             serverId = server.id,
             secretKey = secretKey,
             serverName = serverName,
-            bindPort = bindPort
+            bindPort = bindPort,
+            serverUser = binding.editServerUser.text?.toString()?.trim().orEmpty(),
+            useEncryption = binding.switchUseEncryption.isChecked,
+            useCompression = binding.switchUseCompression.isChecked
         )
         store.upsert(config)
         existing = config

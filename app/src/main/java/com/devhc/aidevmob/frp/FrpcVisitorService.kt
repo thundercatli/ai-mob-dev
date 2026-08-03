@@ -11,6 +11,8 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.devhc.aidevmob.R
+import com.devhc.aidevmob.frp.nativecore.NativeFrpcBridge
+import com.devhc.aidevmob.settings.AppSettings
 import com.devhc.aidevmob.ui.MainActivity
 import java.io.BufferedReader
 import java.io.File
@@ -18,15 +20,16 @@ import java.io.InputStreamReader
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Runs embedded frpc binaries (packaged as jniLibs/arm64-v8a/libfrpc.so, extracted to a real file
- * thanks to useLegacyPackaging) as STCP visitors, in the foreground so Android doesn't kill them.
- * One process per tunnel profile, so several tunnels can be up at the same time.
+ * Runs STCP visitors with either the embedded Go executable or the in-process C++ core. One runtime
+ * instance per tunnel profile keeps start/stop independent when several tunnels are active.
  */
 class FrpcVisitorService : Service() {
 
     private class RunningTunnel(
         val config: FrpcConfig,
+        val kernel: FrpcKernel,
         @Volatile var process: Process? = null,
+        @Volatile var nativeHandle: Long = 0,
         @Volatile var desiredRunning: Boolean = true,
         @Volatile var restartAttempts: Int = 0
     )
@@ -66,9 +69,87 @@ class FrpcVisitorService : Service() {
         // Restarting an already-running tunnel would leave the old process holding the local port.
         tunnels[config.id]?.let { stopTunnel(config.id) }
 
-        val tunnel = RunningTunnel(config)
+        val tunnel = RunningTunnel(config, AppSettings(applicationContext).frpcKernel)
         tunnels[config.id] = tunnel
-        launchProcess(tunnel)
+        when (tunnel.kernel) {
+            FrpcKernel.GO -> launchProcess(tunnel)
+            FrpcKernel.CPP -> launchNativeCore(tunnel)
+        }
+    }
+
+    private fun launchNativeCore(tunnel: RunningTunnel) {
+        val config = tunnel.config
+        FrpcRuntime.update(config.id, FrpcRuntime.State.STARTING, bindPort = config.bindPort)
+        val server = FrpsServerStore(applicationContext).get(config.serverId)
+        if (server == null) {
+            FrpcRuntime.update(
+                config.id, FrpcRuntime.State.ERROR,
+                error = getString(R.string.tunnel_error_no_server)
+            )
+            updateNotification()
+            return
+        }
+
+        FrpcRuntime.appendLog(config.id, getString(R.string.tunnel_log_cpp_starting))
+        val handle = runCatching {
+            NativeFrpcBridge.start(
+                serverHost = server.serverAddr,
+                serverPort = server.serverPort,
+                serverName = config.serverName,
+                secretKey = config.secretKey,
+                authToken = server.authToken.orEmpty(),
+                user = server.user,
+                serverUser = config.serverUser,
+                useTls = server.tlsEnable,
+                tcpMux = server.tcpMux,
+                useEncryption = config.useEncryption,
+                useCompression = config.useCompression,
+                bindPort = config.bindPort,
+                listener = object : NativeFrpcBridge.Listener {
+                    override fun onNativeStateChanged(state: Int, detail: String?) {
+                        val runtimeState = when (state) {
+                            NativeFrpcBridge.STATE_STARTING -> FrpcRuntime.State.STARTING
+                            NativeFrpcBridge.STATE_RUNNING -> FrpcRuntime.State.RUNNING
+                            NativeFrpcBridge.STATE_ERROR -> FrpcRuntime.State.ERROR
+                            else -> FrpcRuntime.State.STOPPED
+                        }
+                        FrpcRuntime.update(
+                            config.id,
+                            runtimeState,
+                            error = detail,
+                            bindPort = config.bindPort
+                        )
+                        updateNotification()
+                    }
+
+                    override fun onNativeLog(line: String) {
+                        Log.d(TAG, "[${config.displayName}] [cpp] $line")
+                        FrpcRuntime.appendLog(config.id, "[cpp] $line")
+                    }
+
+                    override fun openNativeTransport(
+                        host: String,
+                        port: Int,
+                        useTls: Boolean,
+                        timeoutMs: Int
+                    ): Int = NativeFrpcBridge.openPlatformTransport(host, port, useTls, timeoutMs)
+                }
+            )
+        }.getOrElse { error ->
+            FrpcRuntime.update(config.id, FrpcRuntime.State.ERROR, error = error.message)
+            updateNotification()
+            return
+        }
+        if (handle == 0L) {
+            FrpcRuntime.update(
+                config.id,
+                FrpcRuntime.State.ERROR,
+                error = getString(R.string.tunnel_error_cpp_start_failed)
+            )
+            updateNotification()
+            return
+        }
+        tunnel.nativeHandle = handle
     }
 
     private fun launchProcess(tunnel: RunningTunnel) {
@@ -162,6 +243,9 @@ class FrpcVisitorService : Service() {
         tunnel.desiredRunning = false
         tunnel.process?.destroy()
         tunnel.process = null
+        val nativeHandle = tunnel.nativeHandle
+        tunnel.nativeHandle = 0
+        if (nativeHandle != 0L) NativeFrpcBridge.stop(nativeHandle)
         FrpcRuntime.update(tunnelId, FrpcRuntime.State.STOPPED)
         runCatching { File(filesDir, configFileName(tunnelId)).delete() }
         updateNotification()
@@ -181,6 +265,9 @@ class FrpcVisitorService : Service() {
         val builder = StringBuilder()
         builder.appendLine("serverAddr = \"${escapeToml(server.serverAddr)}\"")
         builder.appendLine("serverPort = ${server.serverPort}")
+        if (server.user.isNotBlank()) builder.appendLine("user = \"${escapeToml(server.user)}\"")
+        builder.appendLine("transport.tls.enable = ${server.tlsEnable}")
+        builder.appendLine("transport.tcpMux = ${server.tcpMux}")
         if (!server.authToken.isNullOrBlank()) {
             builder.appendLine("auth.method = \"token\"")
             builder.appendLine("auth.token = \"${escapeToml(server.authToken)}\"")
@@ -190,7 +277,12 @@ class FrpcVisitorService : Service() {
         builder.appendLine("name = \"aidevmob-${config.id.take(8)}\"")
         builder.appendLine("type = \"stcp\"")
         builder.appendLine("serverName = \"${escapeToml(config.serverName)}\"")
+        if (config.serverUser.isNotBlank()) {
+            builder.appendLine("serverUser = \"${escapeToml(config.serverUser)}\"")
+        }
         builder.appendLine("secretKey = \"${escapeToml(config.secretKey)}\"")
+        builder.appendLine("transport.useEncryption = ${config.useEncryption}")
+        builder.appendLine("transport.useCompression = ${config.useCompression}")
         builder.appendLine("bindAddr = \"127.0.0.1\"")
         builder.appendLine("bindPort = ${config.bindPort}")
 
