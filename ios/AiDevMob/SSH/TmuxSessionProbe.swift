@@ -77,10 +77,16 @@ enum TmuxSessionProbe {
                 }
             } catch let error as ProbeError {
                 lastFailure = error
-                // missingTmux is definitive — no point trying the next shell flag.
-                if case .missingTmux = error { throw error }
+                // These originate outside the remote shell, so changing -lc to -ic cannot help.
+                // Only non-empty, unparseable command output should fall through to the next flag.
+                switch error {
+                case .missingTmux, .listFailed:
+                    throw error
+                case .notRunnable:
+                    break
+                }
             } catch {
-                lastFailure = .listFailed(error.localizedDescription)
+                throw ProbeError.listFailed(SshTerminalConnector.diagnosticDescription(error))
             }
         }
         throw lastFailure ?? ProbeError.notRunnable
@@ -90,8 +96,8 @@ enum TmuxSessionProbe {
     /// shell rc-file noise on an interactive shell — `parse` ignores lines that don't split).
     private static func runList(config: ConnectionConfig, shellFlags: String) async throws -> String {
         let command = "${SHELL:-/bin/sh} \(shellFlags) \(shellQuote(pathPrefix + listCommand))"
-        // SSH-level failure (unreachable/auth) surfaces as a thrown error from exec — map
-        // non-ProbeError throws to listFailed so the caller can try the next shell flag.
+        // SSH-level failure (unreachable/auth) surfaces as a thrown error from exec and is mapped
+        // to listFailed by `list`; changing the remote shell flag cannot repair transport errors.
         let stdout = try await SshTerminalConnector.exec(config: config, command: command)
 
         // tmux's "no server running" lands on stderr (which exec merges into stdout here for

@@ -31,6 +31,37 @@ final class TerminalMenuTests: XCTestCase {
         XCTAssertTrue(titles.contains("重新连接"))
     }
 
+    func testProbeOutputFramingIgnoresEchoedMarkerFragments() throws {
+        let token = "A1B2-C3D4"
+        let start = "AIDEVMOB_PROBE_START_\(token)"
+        let end = "AIDEVMOB_PROBE_DONE_\(token)"
+        let echoedPayload =
+            "printf '\\n%s%s\\n' 'AIDEVMOB_PROBE_START_' '\(token)'; tmux list-sessions; " +
+            "printf '\\n%s%s\\n' 'AIDEVMOB_PROBE_DONE_' '\(token)'"
+
+        XCTAssertFalse(echoedPayload.contains(start))
+        XCTAssertFalse(echoedPayload.contains(end))
+
+        let captured = "\(echoedPayload)\r\n\(start)\r\nwork|2|1\r\n\(end)\r\n"
+        let result = try SshTerminalConnector.cleanProbeOutput(
+            captured,
+            startSentinel: start,
+            endSentinel: end
+        )
+
+        XCTAssertEqual(result.trimmingCharacters(in: .whitespacesAndNewlines), "work|2|1")
+    }
+
+    func testProbeOutputFramingRejectsIncompleteOutput() {
+        XCTAssertThrowsError(try SshTerminalConnector.cleanProbeOutput(
+            "login banner only",
+            startSentinel: "start",
+            endSentinel: "end"
+        )) { error in
+            XCTAssertEqual(error.localizedDescription, SshConnectorError.incompleteProbeOutput.localizedDescription)
+        }
+    }
+
     private func menuTitles(in controller: UIViewController) throws -> [String] {
         let button = try XCTUnwrap(findButton(label: "更多操作", in: controller.view))
         let menu = try XCTUnwrap(button.menu)

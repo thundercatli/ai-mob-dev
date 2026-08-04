@@ -27,12 +27,15 @@ enum SshConnectorError: LocalizedError {
     case missingCredentials
     /// `start` was called more than once on the same instance.
     case alreadyStarted
+    /// The throwaway PTY closed without returning the framed command output.
+    case incompleteProbeOutput
 
     var errorDescription: String? {
         switch self {
         case .notConnected: return "SSH session is not connected."
         case .missingCredentials: return "The connection profile has no usable credentials."
         case .alreadyStarted: return "This connector already has a session; create a new one to reconnect."
+        case .incompleteProbeOutput: return "远端 shell 未返回完整的探测结果。"
         }
     }
 }
@@ -138,6 +141,15 @@ final class TofuHostKeyValidator: NIOSSHClientServerAuthenticationDelegate {
 /// dropped connection surfaces via `onDisconnect` and the reconnect path (tmux `new-session -A`
 /// re-attach) recovers losslessly.
 final class SshTerminalConnector {
+
+    private struct ProbeStageError: LocalizedError {
+        let stage: String
+        let underlying: Error
+
+        var errorDescription: String? {
+            "\(stage)：\(SshTerminalConnector.diagnosticDescription(underlying))"
+        }
+    }
 
     private static let locale = "en_US.UTF-8"
 
@@ -357,30 +369,44 @@ final class SshTerminalConnector {
     /// appears, then close. This is the SSH equivalent of "run a command in a login shell and
     /// capture the output" and matches how Android's sshj probe establishes its own session.
     ///
-    /// Retries once on a connection failure: when the tunnel was just started, frpc reports
-    /// `.running` a moment before its local TCP listener actually accepts connections, so the
-    /// first dial can fail with a NIO `ChannelError` even though the very next attempt succeeds.
-    /// One 400ms-delayed retry papers over that race without making a healthy connection slower.
+    /// Retries transient transport/channel failures with a short bounded backoff. frpc can report
+    /// `.running` before its local visitor is ready, and after foregrounding it may need a moment
+    /// to re-establish the control connection even though the in-process state is still running.
     ///
     /// - Throws: any connection/auth/PTY failure (after the retry).
     static func exec(config: ConnectionConfig, command: String) async throws -> String {
-        do {
-            return try await execOnce(config: config, command: command)
-        } catch {
-            try? await Task.sleep(nanoseconds: 400_000_000) // 400ms
-            return try await execOnce(config: config, command: command)
+        let retryDelays: [UInt64] = [400_000_000, 1_200_000_000, 2_400_000_000]
+        var lastError: Error?
+
+        for attempt in 0...retryDelays.count {
+            do {
+                return try await execOnce(config: config, command: command)
+            } catch {
+                guard !Task.isCancelled else { throw error }
+                guard attempt < retryDelays.count, isRetryableProbeError(error) else {
+                    throw error
+                }
+                lastError = error
+                try await Task.sleep(nanoseconds: retryDelays[attempt])
+            }
         }
+        throw lastError ?? SshConnectorError.notConnected
     }
 
     private static func execOnce(config: ConnectionConfig, command: String) async throws -> String {
         let validator = TofuHostKeyValidator(host: config.host, port: config.port)
-        let client = try await SSHClient.connect(
-            host: config.host,
-            port: config.port,
-            authenticationMethod: try Self.makeAuthenticationMethod(from: config),
-            hostKeyValidator: SSHHostKeyValidator.custom(validator),
-            reconnect: .never
-        )
+        let client: SSHClient
+        do {
+            client = try await SSHClient.connect(
+                host: config.host,
+                port: config.port,
+                authenticationMethod: try Self.makeAuthenticationMethod(from: config),
+                hostKeyValidator: SSHHostKeyValidator.custom(validator),
+                reconnect: .never
+            )
+        } catch {
+            throw ProbeStageError(stage: "SSH 建连/握手阶段", underlying: error)
+        }
         // CRITICAL: close MUST complete before this function returns. An frpc STCP visitor
         // typically accepts only ONE concurrent connection; leaving the client open makes the
         // next probe attempt (or the shell-flag retry inside TmuxSessionProbe.list) fail with
@@ -396,11 +422,28 @@ final class SshTerminalConnector {
             terminalModes: SSHTerminalModes([:])
         )
 
-        // Unique sentinel echoed after the command so we know when its output is fully flushed —
-        // a PTY stream never EOFs while the shell is alive, so we read until the sentinel shows,
-        // then send `exit` to close the channel cleanly.
-        let sentinel = "AIDEVMOB_PROBE_DONE_\(UUID().uuidString)"
-        let payload = command + "; printf '\\n\(sentinel)\\n'; exit\n"
+        // Frame the real command output between two unique markers. Each marker is assembled from
+        // two printf arguments so its complete text does NOT occur in the command line echoed by
+        // the PTY. Otherwise the echo itself looks like completion and we stop before tmux output
+        // arrives (the original cause of the probe's parse/second-connect failure).
+        let markerToken = UUID().uuidString
+        let startSentinel = "AIDEVMOB_PROBE_START_\(markerToken)"
+        let endSentinel = "AIDEVMOB_PROBE_DONE_\(markerToken)"
+        let printStart = "printf '\\n%s%s\\n' 'AIDEVMOB_PROBE_START_' '\(markerToken)'"
+        let printEnd = "printf '\\n%s%s\\n' 'AIDEVMOB_PROBE_DONE_' '\(markerToken)'"
+        // Do not send `exit`: Citadel's withPTY closes the SSH child channel after this closure
+        // returns. Letting the remote shell and Citadel close it concurrently can reset the frpc
+        // TCP stream and turn a fully received result into a false ECONNRESET failure.
+        let payload = "\(printStart); \(command); \(printEnd)\n"
+        let timeoutTask = Task {
+            do {
+                try await Task.sleep(nanoseconds: 20_000_000_000) // Match Android's command timeout.
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            try? await client.close()
+        }
 
         do {
             // Run the PTY on the SAME async context as connect (no TaskGroup/child task):
@@ -408,59 +451,104 @@ final class SshTerminalConnector {
             // runs in a different structured-concurrency context than the connect that opened
             // it — the channel reports ioOnClosedChannel even though connect succeeded. The
             // main terminal connection (start()) calls withPTY the same direct way and works.
-            // Timeout is enforced separately by closing the client after 8s, which EOFs the PTY
+            // Timeout is enforced separately by closing the client after 20s, which EOFs the PTY
             // stream and lets us return what we collected.
-            let timeoutTask = Task {
-                try? await Task.sleep(nanoseconds: 8_000_000_000) // 8s
-                try? await client.close()
-            }
-
             var collected = [UInt8]()
-            try await client.withPTY(request) { inbound, outbound in
-                // Give the shell a moment to be ready before writing the command — a PTY opens
-                // before sshd has fully started the shell; writing too early loses the input.
-                try? await Task.sleep(nanoseconds: 600_000_000) // 600ms
-                try await outbound.write(ByteBuffer(string: payload))
-                for try await output in inbound {
-                    switch output {
-                    case .stdout(let buffer), .stderr(let buffer):
-                        collected.append(contentsOf: buffer.readableBytesView)
+            do {
+                try await client.withPTY(request) { inbound, outbound in
+                    // Give the shell a moment to be ready before writing the command — a PTY opens
+                    // before sshd has fully started the shell; writing too early loses the input.
+                    try? await Task.sleep(nanoseconds: 600_000_000) // 600ms
+                    try await outbound.write(ByteBuffer(string: payload))
+                    for try await output in inbound {
+                        switch output {
+                        case .stdout(let buffer), .stderr(let buffer):
+                            collected.append(contentsOf: buffer.readableBytesView)
+                        }
+                        // Only printf emits the complete marker; the PTY echo contains its two parts.
+                        let text = String(decoding: collected, as: UTF8.self)
+                        if text.contains(endSentinel) {
+                            break
+                        }
                     }
-                    // Stop once the sentinel is fully flushed.
-                    if let text = String(bytes: collected, encoding: .utf8),
-                       text.contains(sentinel) {
-                        break
-                    }
+                }
+            } catch {
+                // withPTY closes its child channel after the closure returns. Some frpc/sshd
+                // combinations reset the parent TCP stream during that close. Once the complete
+                // frame is present the command succeeded, so keep its result; a pre-frame reset
+                // remains a real transport failure and is retried by exec().
+                let text = String(decoding: collected, as: UTF8.self)
+                guard text.contains(startSentinel), text.contains(endSentinel) else {
+                    throw ProbeStageError(stage: "PTY 建立/读取阶段", underlying: error)
                 }
             }
             timeoutTask.cancel()
-            let text = String(bytes: collected, encoding: .utf8) ?? ""
-            let result = Self.cleanProbeOutput(text, sentinel: sentinel)
+            let text = String(decoding: collected, as: UTF8.self)
+            let result = try Self.cleanProbeOutput(
+                text,
+                startSentinel: startSentinel,
+                endSentinel: endSentinel
+            )
             // Close before returning so the STCP visitor's single connection slot is freed.
             try? await client.close()
             return result
         } catch {
             // Close even on failure, then rethrow.
+            timeoutTask.cancel()
             try? await client.close()
             throw error
         }
     }
 
-    /// Trims captured PTY output to just the command's result:
-    /// 1. Cut everything after the sentinel (it and the exit that follows are not command output).
-    /// 2. Strip ANSI escape sequences (CSI `ESC [ ... letter`, OSC `ESC ] ... BEL`, and bare
-    ///    `ESC x` two-char sequences). A PTY echoes the command back with full colour/cursor
-    ///    escape codes; without stripping them, the echo of the command line fragments in ways
-    ///    that can fool the parser, and real output lines can get glued to prompt noise.
-    /// 3. Leave line-filtering to `TmuxSessionProbe.parse`, whose `compactMap` already drops any
-    ///    line that doesn't match the `name|windows|attached` shape — so residual shell noise
-    ///    (login banner, prompt) is harmless.
-    private static func cleanProbeOutput(_ text: String, sentinel: String) -> String {
-        var out = text
-        if let range = out.range(of: sentinel) {
-            out = String(out[out.startIndex..<range.lowerBound])
+    /// Whether opening a fresh probe connection is worth retrying. Authentication, host-key and
+    /// credential failures are deterministic; socket and SSH channel setup failures are commonly
+    /// transient while an frpc visitor starts or reconnects.
+    private static func isRetryableProbeError(_ error: Error) -> Bool {
+        if let staged = error as? ProbeStageError {
+            return isRetryableProbeError(staged.underlying)
         }
-        return Self.stripANSIEscape(out)
+        if error is IOError || error is ChannelError {
+            return true
+        }
+        guard let error = error as? CitadelError else { return false }
+        switch error {
+        case .channelCreationFailed, .channelFailure:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// `Error.localizedDescription` bridges Swift errors through NSError. For NIO's `IOError`
+    /// that bridge produces the useless text "NIOCore.IOError error 1"; accessing the concrete
+    /// value preserves its operation, POSIX reason and errno.
+    static func diagnosticDescription(_ error: Error) -> String {
+        if let ioError = error as? IOError {
+            return ioError.localizedDescription
+        }
+        if let localized = error as? LocalizedError,
+           let description = localized.errorDescription,
+           !description.isEmpty {
+            return description
+        }
+        return String(describing: error)
+    }
+
+    /// Extracts only bytes emitted by the command, excluding the echoed payload, login banner,
+    /// prompt and trailing exit. ANSI sequences inside the framed result are removed afterwards.
+    static func cleanProbeOutput(
+        _ text: String,
+        startSentinel: String,
+        endSentinel: String
+    ) throws -> String {
+        guard let start = text.range(of: startSentinel) else {
+            throw SshConnectorError.incompleteProbeOutput
+        }
+        let framed = text[start.upperBound...]
+        guard let end = framed.range(of: endSentinel) else {
+            throw SshConnectorError.incompleteProbeOutput
+        }
+        return Self.stripANSIEscape(String(framed[..<end.lowerBound]))
     }
 
     /// Removes ANSI escape sequences from a string. Handles CSI (`ESC[` ... final byte),

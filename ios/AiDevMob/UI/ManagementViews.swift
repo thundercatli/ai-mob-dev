@@ -460,19 +460,45 @@ struct ConnectionEditView: View {
 
     /// Translates a raw SSH/NIO error from the probe into a hint that points at the likely cause.
     private static func friendlyProbeError(_ error: Error, hasTunnel: Bool) -> String {
-        let raw = error.localizedDescription
-        if raw.contains("ChannelError") || raw.contains("Channel") || raw.contains("connection") {
-            return hasTunnel
+        let raw = SshTerminalConnector.diagnosticDescription(error)
+        let lower = raw.lowercased()
+        if raw.contains("隧道启动失败") {
+            return raw
+        }
+        if lower.contains("channel") || lower.contains("connect") || lower.contains("socket")
+            || lower.contains("refused") || lower.contains("reset") || lower.contains("timed out")
+            || lower.contains("broken pipe") {
+            let hint = hasTunnel
                 ? "无法连接：隧道未就绪或本地端口不可达，请稍候重试或检查隧道配置。"
                 : "无法连接到主机，请检查地址/端口和网络。"
+            return "\(hint)\n详细信息：\(raw)"
         }
-        if raw.contains("auth") || raw.contains("Auth") || raw.contains("password") {
+        if lower.contains("auth") || lower.contains("password") {
             return "认证失败，请检查用户名/密码或私钥配置。"
         }
-        if raw.lowercased().contains("host key") {
+        if lower.contains("host key") {
             return "主机密钥校验失败。"
         }
         return "探测失败：\(raw)"
+    }
+
+    /// STCP accepts the local socket before frps validates the target proxy and secret. When that
+    /// validation fails, the SSH side only sees ECONNRESET; the captured frpc lines hold the cause.
+    private static func probeTunnelLogDetail(_ tunnelId: String?) -> String? {
+        guard let tunnelId else { return nil }
+        let lines = TunnelRuntime.shared.logs(tunnelId)
+            .split(whereSeparator: \Character.isNewline)
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !lines.isEmpty else { return nil }
+
+        let diagnostic = lines.filter { line in
+            let lower = line.lowercased()
+            return lower.contains("visitor") || lower.contains("proxy")
+                || lower.contains("auth") || lower.contains("error") || lower.contains("failed")
+        }
+        let selected = (diagnostic.isEmpty ? lines : diagnostic).suffix(4)
+        return selected.map { String($0.suffix(300)) }.joined(separator: "\n")
     }
 
     /// Connects (through the configured tunnel, if any) and lists the remote tmux sessions,
@@ -488,11 +514,10 @@ struct ConnectionEditView: View {
         }
 
         Task {
-            // If a tunnel is configured, start it (and wait) before probing — same gate the
-            // terminal uses. SSH must reach sshd through the tunnel's local listener.
-            let sshConfig = await ensureTunnel(resolved)
-
             do {
+                // If a tunnel is configured, start it (and wait) before probing — same gate the
+                // terminal uses. SSH must reach sshd through the tunnel's local listener.
+                let sshConfig = try await ensureTunnel(resolved)
                 let sessions = try await TmuxSessionProbe.list(config: sshConfig)
                 await MainActor.run {
                     tmuxProbing = false
@@ -503,9 +528,11 @@ struct ConnectionEditView: View {
                     }
                 }
             } catch {
+                let message = Self.friendlyProbeError(error, hasTunnel: resolved.tunnelId != nil)
+                let tunnelDetail = Self.probeTunnelLogDetail(resolved.tunnelId)
                 await MainActor.run {
                     tmuxProbing = false
-                    tmuxProbeError = Self.friendlyProbeError(error, hasTunnel: resolved.tunnelId != nil)
+                    tmuxProbeError = tunnelDetail.map { "\(message)\nfrpc 日志：\n\($0)" } ?? message
                 }
             }
         }
@@ -520,16 +547,22 @@ struct ConnectionEditView: View {
     /// still have to point SSH at `127.0.0.1:<bindPort>`. The earlier version returned the
     /// un-redirected config when the tunnel was already running, so `exec` dialled the raw
     /// host:port (only reachable through the tunnel) and failed with a NIO channel error.
-    private func ensureTunnel(_ config: ConnectionConfig) async -> ConnectionConfig {
-        guard let tunnelId = config.tunnelId,
-              let tunnel = FrpcTunnelStore().get(id: tunnelId) else {
+    private func ensureTunnel(_ config: ConnectionConfig) async throws -> ConnectionConfig {
+        guard let tunnelId = config.tunnelId else {
             return config
         }
-        guard tunnel.bindPort > 0 else { return config }
+        guard let tunnel = FrpcTunnelStore().get(id: tunnelId) else {
+            throw TunnelError.startFailed("关联的隧道配置不存在或被删除")
+        }
+        guard tunnel.bindPort > 0 && tunnel.bindPort <= 65_535 else {
+            throw TunnelError.startFailed("隧道本地端口无效")
+        }
 
         // Start the tunnel only if it isn't already up.
-        if !TunnelRuntime.shared.isRunning(tunnelId),
-           let server = FrpsServerStore().get(id: tunnel.serverId) {
+        if !TunnelRuntime.shared.isRunning(tunnelId) {
+            guard let server = FrpsServerStore().get(id: tunnel.serverId) else {
+                throw TunnelError.startFailed("隧道指向的 frps 服务器配置不存在")
+            }
             let params = VisitorParams(
                 id: tunnel.id,
                 serverAddr: server.serverAddr,
@@ -539,11 +572,11 @@ struct ConnectionEditView: View {
                 secretKey: tunnel.secretKey,
                 bindPort: tunnel.bindPort
             )
-            do {
-                try TunnelRuntime.shared.start(params)
-                _ = await TunnelRuntime.shared.awaitRunning(tunnelId, timeout: 20)
-            } catch {
-                // Probe will fail with a clearer SSH error; let it through.
+            try TunnelRuntime.shared.start(params)
+            let state = await TunnelRuntime.shared.awaitRunning(tunnelId, timeout: 20)
+            guard state == .running else {
+                let detail = TunnelRuntime.shared.lastError(tunnelId)
+                throw TunnelError.startFailed(detail.isEmpty ? "等待隧道就绪超时" : detail)
             }
         }
 
