@@ -23,6 +23,7 @@ fun signingValue(propertyName: String, envName: String): String? =
 android {
     namespace = "com.devhc.aidevmob"
     compileSdk = 36
+    ndkVersion = "25.2.9519653"
 
     defaultConfig {
         applicationId = "com.devhc.aidevmob"
@@ -33,8 +34,13 @@ android {
         versionName = System.getenv("VERSION_NAME")?.takeIf { it.isNotBlank() } ?: "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
-            // We only ship a prebuilt arm64 frpc binary (packaged as jniLibs/arm64-v8a/libfrpc.so).
+            // The Go executable and the JNI C++ core are currently both packaged for arm64 only.
             abiFilters += "arm64-v8a"
+        }
+        externalNativeBuild {
+            cmake {
+                cppFlags += listOf("-std=c++17", "-Wall", "-Wextra", "-Werror")
+            }
         }
     }
 
@@ -74,6 +80,13 @@ android {
 
     buildFeatures {
         viewBinding = true
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 
     kotlin {

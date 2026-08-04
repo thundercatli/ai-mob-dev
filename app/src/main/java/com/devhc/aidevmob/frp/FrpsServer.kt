@@ -16,7 +16,10 @@ data class FrpsServer(
     val serverAddr: String,
     val serverPort: Int,
     /** frps auth token; null/blank if frps has no token auth configured. */
-    val authToken: String?
+    val authToken: String?,
+    val user: String = "",
+    val tlsEnable: Boolean = true,
+    val tcpMux: Boolean = true
 ) {
     val displayName: String
         get() = name.ifBlank { "$serverAddr:$serverPort" }
@@ -25,11 +28,15 @@ data class FrpsServer(
         get() = buildString {
             append("$serverAddr:$serverPort")
             if (!authToken.isNullOrBlank()) append("  ·  已配置 token")
+            append(if (tlsEnable) "  ·  TLS" else "  ·  TCP")
         }
 
     /** Two records describing the same frps, used to dedupe when splitting old flat tunnels. */
     internal fun sameEndpointAs(other: FrpsServer): Boolean =
         serverAddr == other.serverAddr &&
             serverPort == other.serverPort &&
-            authToken.orEmpty() == other.authToken.orEmpty()
+            authToken.orEmpty() == other.authToken.orEmpty() &&
+            user == other.user &&
+            tlsEnable == other.tlsEnable &&
+            tcpMux == other.tcpMux
 }

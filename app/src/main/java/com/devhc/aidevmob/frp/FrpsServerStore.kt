@@ -67,6 +67,9 @@ class FrpsServerStore(context: Context) {
         put("serverAddr", server.serverAddr)
         put("serverPort", server.serverPort)
         put("authToken", server.authToken ?: JSONObject.NULL)
+        put("user", server.user)
+        put("tlsEnable", server.tlsEnable)
+        put("tcpMux", server.tcpMux)
     }
 
     private fun fromJson(json: JSONObject): FrpsServer? {
@@ -80,7 +83,10 @@ class FrpsServerStore(context: Context) {
                 null
             } else {
                 json.optString("authToken").takeIf { it.isNotEmpty() }
-            }
+            },
+            user = json.optString("user"),
+            tlsEnable = json.optBoolean("tlsEnable", true),
+            tcpMux = json.optBoolean("tcpMux", true)
         )
     }
 

@@ -134,6 +134,9 @@ class FrpcConfigStore(context: Context) {
         put("secretKey", config.secretKey)
         put("serverName", config.serverName)
         put("bindPort", config.bindPort)
+        put("serverUser", config.serverUser)
+        put("useEncryption", config.useEncryption)
+        put("useCompression", config.useCompression)
     }
 
     private fun fromJson(json: JSONObject): FrpcConfig? {
@@ -148,7 +151,10 @@ class FrpcConfigStore(context: Context) {
             },
             secretKey = json.optString("secretKey"),
             serverName = serverName,
-            bindPort = json.optInt("bindPort", 6022)
+            bindPort = json.optInt("bindPort", 6022),
+            serverUser = json.optString("serverUser"),
+            useEncryption = json.optBoolean("useEncryption", false),
+            useCompression = json.optBoolean("useCompression", false)
         )
     }
 

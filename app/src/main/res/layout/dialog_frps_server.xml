@@ -65,6 +65,35 @@
             android:singleLine="true" />
     </com.google.android.material.textfield.TextInputLayout>
 
+    <com.google.android.material.textfield.TextInputLayout
+        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:hint="@string/server_hint_user">
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/editServerUser"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="textNoSuggestions"
+            android:singleLine="true" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <com.google.android.material.materialswitch.MaterialSwitch
+        android:id="@+id/switchServerTls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:checked="true"
+        android:text="@string/server_option_tls" />
+
+    <com.google.android.material.materialswitch.MaterialSwitch
+        android:id="@+id/switchServerTcpMux"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:checked="true"
+        android:text="@string/server_option_tcp_mux" />
+
     <TextView
         android:id="@+id/textServerError"
         android:layout_width="match_parent"
