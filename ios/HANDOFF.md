@@ -1,6 +1,6 @@
 # iOS Port — Handoff
 
-**状态：端到端跑通 + iPad 原生适配 + tmux 探测/窗口菜单 + SFTP + 加密备份/恢复 + 环境自检 + 连接内凭证管理 + 应用更新检查。真机 iPad/iPhone 目标编译验证。**
+**状态：端到端跑通 + iPad 原生适配 + tmux 探测/窗口菜单 + SFTP + 加密备份/恢复 + 环境自检 + 连接内凭证管理。版本更新入口已按侧载限制禁用。真机 iPad/iPhone 目标编译验证。**
 **最后更新：2026-08-02**
 
 ---
@@ -27,7 +27,7 @@
 - ✅ **环境自检**：frpc / CryptoKit / Keychain / 网络 / 电源后台 / 配置引用与端口检查
 - ✅ **终端 tmux 菜单**：新建/上一个/下一个/窗口列表/重命名 + 重连/断开/SFTP/键盘
 - ✅ **连接内凭证管理**：新建/编辑凭证，保存后自动选中并同步用户名与认证方式
-- ✅ **应用更新检查**：GitHub release + 可选 Keychain token + 直连/代理回退 + 发布说明/发布页
+- ✅ **版本更新说明**：更新入口明确提示侧载限制，仅保留发布页入口；自动检查已禁用
 - ✅ **原生 App Icon**：复用 Android 终端图标设计，1024×1024 无透明 PNG，可由脚本重生成
 
 ---
@@ -140,15 +140,10 @@ task group 退出时仍会等待 child，最终整次自检卡死。
 **解决方案**：`NetworkPathProbeOperation` 让网络回调和 2 秒超时都进入同一个 `finish`，用
 `NSLock` 保证只取走并恢复 continuation 一次，然后取消 monitor。不要改回只取消不 resume 的结构。
 
-### 24. iOS 更新检查不能照搬 APK 自安装
-`UpdateChecker` 与 Android 保持同一 GitHub release API、数字版本比较、可选 token 和
-`p.all3n.top` 回退规则；401/403/404/429 是确定响应，不走代理重试。token 使用 Keychain，
-并复用 Android 兼容备份原先保留的同一 account。
-
-iOS 应用不能下载后覆盖自己的可执行文件，因此 `UpdateCheckView` 在发现新版时展示发布说明并
-打开 release 页面，安装仍走当前使用的签名/TestFlight/侧载渠道。`project.yml` 显式设置
-`MARKETING_VERSION` 和 `CURRENT_PROJECT_VERSION`，否则生成的 Info.plist 可能使用 Xcode
-默认版本，导致比较错误。
+### 24. iOS 版本更新已禁用
+iOS 应用不能下载后覆盖自己的可执行文件，当前侧载版本因此不执行版本网络检查，也不要求用户填写
+GitHub token。`UpdateCheckView` 只展示禁用原因和发布页入口；安装仍走当前使用的签名/TestFlight/
+App Store/设备管理渠道。`UpdateChecker` 的解析和网络测试代码保留，供未来系统分发渠道复用。
 
 ### 25. iPad 打开终端后默认收起侧栏
 `IPadShell` 用受控的 `NavigationSplitViewVisibility`：`activeTerminal` 出现时切到
@@ -260,7 +255,7 @@ ios/
 - ✅ 环境自检（按 iOS 架构覆盖 frpc、加密、Keychain、网络、电源后台、配置完整性）
 - ✅ tmux 窗口菜单（新建/切换/列表/重命名）
 - ✅ 连接编辑器内新建/编辑凭证并自动选中
-- ✅ 应用更新检查（GitHub release + token + 直连/代理回退；iOS 通过原签名渠道安装）
+- ✅ 版本更新说明（侧载版本禁用自动检查；保留发布页入口）
 
 **仍缺失（优先级排序）**：
 1. 多语言（当前约 287 个中文字符串，含 SwiftUI、UIKit 与动态错误状态）

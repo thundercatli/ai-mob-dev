@@ -167,10 +167,16 @@ xcodebuild -scheme AiDevMob \
 - Citadel 当前不支持仅提供 RSA host key 的服务端；优先使用 Ed25519 或 ECDSA。
 - iOS 没有 Android foreground service；应用长期后台运行时隧道和 SSH 可能被系统暂停，回到前台会尝试恢复。
 - 每条 STCP visitor 的并发承载能力有限，应复用 SSH transport。
-- iOS 更新检查只能打开发布页，不能像 Android 一样覆盖安装自身可执行文件。
+- iOS 版本更新功能已禁用：侧载应用不能自行覆盖安装，页面只保留发布页入口。
 - 当前界面主要是中文，尚未完成多语言资源化。
 
-## 11. 脱敏发布检查清单
+## 11. 版本更新策略
+
+当前 iOS 构建是侧载版本，应用不会自动请求版本接口，也不会保存更新 token。原因是 iOS 不允许应用下载并覆盖安装自身；自动更新必须交给 App Store、TestFlight、MDM 等系统分发渠道。用户可以从发布页手动获取新版本，并使用相同签名方式安装。
+
+`UpdateChecker` 的解析和网络测试代码暂时保留，供未来接入系统分发渠道时复用；当前 UI 不会调用它。
+
+## 12. 脱敏发布检查清单
 
 提交 issue、日志或文档前确认：
 

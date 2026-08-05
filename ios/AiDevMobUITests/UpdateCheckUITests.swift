@@ -13,8 +13,7 @@ final class UpdateCheckUITests: XCTestCase {
 
         XCTAssertTrue(app.navigationBars["应用更新"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["当前版本"].exists)
-        XCTAssertTrue(app.secureTextFields["GitHub token（可选）"].exists)
-        XCTAssertTrue(app.buttons["检查更新"].isHittable)
+        XCTAssertTrue(app.staticTexts["版本更新已禁用"].exists)
         XCTAssertTrue(app.buttons["打开发布页"].isHittable)
 
         let screenshot = XCTAttachment(screenshot: app.screenshot())
